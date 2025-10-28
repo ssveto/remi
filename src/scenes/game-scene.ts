@@ -41,6 +41,13 @@ export class GameScene extends Phaser.Scene {
   #cardsInHand!: Phaser.GameObjects.Image[];
   #dropZonesInHand: Phaser.GameObjects.Zone[] = [];
   #remi!: Remi;
+  #currentMelds: Card[][] = []; 
+  #selectedCards: Set<Phaser.GameObjects.Image> = new Set();
+  #selectionOrder: Phaser.GameObjects.Image[] = [];
+  #hasOpenedInitialMeld = false;
+  #currentMeldScore = 0;
+  #meldScoreText!: Phaser.GameObjects.Text;
+  #meldButton!: Phaser.GameObjects.Container;
   constructor() {
     super({ key: SCENE_KEYS.GAME });
   }
@@ -58,17 +65,71 @@ export class GameScene extends Phaser.Scene {
     this.#createDropEventListener();
     this.#updateCardsInHand();
     this.#updateDropZonesForHand();
+    this.#createMeldScoreDisplay();
+    this.#createMeldButton();
   }
+
+  #createMeldScoreDisplay(): void {
+    this.#meldScoreText = this.add
+      .text(70, 40, "0", {
+        // Start with just '0'
+        fontSize: "30px",
+        fontFamily: "Roboto",
+        color: "#FFFFFF",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setOrigin(1, 0);
+  }
+
+  #createMeldButton(): void {
+    // Button background
+    const bg = this.add
+      .rectangle(0, 0, 140, 45, 0x4caf50, 1)
+      .setStrokeStyle(2, 0x2e7d32)
+      .setInteractive({ useHandCursor: true });
+
+    // Button text
+    const text = this.add
+      .text(0, 0, "Otvori se", {
+        fontSize: "16px",
+        fontFamily: "Arial",
+        color: "#ffffff",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    // Container for both
+    this.#meldButton = this.add.container(this.scale.width / 2, 550, [
+      bg,
+      text,
+    ]);
+    this.#meldButton.setVisible(false);
+
+    // Hover effects
+    bg.on("pointerover", () => {
+      bg.setFillStyle(0x66bb6a);
+      this.game.canvas.style.cursor = "pointer";
+    });
+
+    bg.on("pointerout", () => {
+      bg.setFillStyle(0x4caf50);
+      this.game.canvas.style.cursor = "default";
+    });
+
+    // Click handler
+    bg.on("pointerdown", () => {
+      this.#layDownMelds();
+    });
+  }
+
+  #layDownMelds(): void {}
   #createDrawPile(): void {
     //this.#drawCardLocationBox(DRAW_PILE_X_POSITIONS, DRAW_PILE_Y_POSITIONS, 45);
     this.#drawPileCards = [];
     for (let i = 0; i < 3; i += 1) {
       this.#drawPileCards.push(
-        this.#createCard(
-          LAYOUT.DRAW_PILE.x + i * 10,
-          LAYOUT.DRAW_PILE.y,
-          false
-        )
+        this.#createCard(LAYOUT.DRAW_PILE.x + i * 10, LAYOUT.DRAW_PILE.y, false)
       );
     }
     const drawZone = this.add
@@ -109,18 +170,22 @@ export class GameScene extends Phaser.Scene {
       }
       this.#remi.drawCard();
       const newCard = this.#remi.cardsInHand[this.#remi.cardsInHand.length - 1];
-
-
-      this.#cardsInHand.push(
-        this.#createCard(newCardX, newCardY, newCard.isFaceUp).setData({
-          zoneType: ZONE_TYPE.CARDS_IN_HAND,
-          cardRef: newCard,
-        })
-      );
+      const cardGameObject = this.#createCard(
+        newCardX,
+        LAYOUT.PLAYER_HAND.y,
+        newCard.isFaceUp
+      ).setData({
+        zoneType: ZONE_TYPE.CARDS_IN_HAND,
+        cardRef: newCard,
+        isSelected: false,
+      });
+      this.#makeCardSelectable(cardGameObject);
+      this.#cardsInHand.push(cardGameObject);
       if (newCard.isFaceUp) {
         const go = this.#cardsInHand[this.#cardsInHand.length - 1].setFrame(
           this.#getCardFrame(newCard)
         );
+        //
         this.input.setDraggable(go);
       }
       this.#showCardsInDrawPile();
@@ -142,11 +207,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   #createDiscardPile(): void {
-    this.#drawCardLocationBox(
-      LAYOUT.DISCARD_PILE.x,
-      LAYOUT.DISCARD_PILE.y,
-      40
-    );
+    this.#drawCardLocationBox(LAYOUT.DISCARD_PILE.x, LAYOUT.DISCARD_PILE.y, 40);
 
     this.#discardPileCard = this.#createCard(
       LAYOUT.DISCARD_PILE.x,
@@ -154,7 +215,6 @@ export class GameScene extends Phaser.Scene {
       true
     ).setVisible(false);
   }
-
 
   #drawCardLocationBox(x: number, y: number, z: number): void {
     this.add
@@ -169,7 +229,7 @@ export class GameScene extends Phaser.Scene {
     _draggable: boolean,
     cardIndex?: number
   ): Phaser.GameObjects.Image {
-    return this.add
+    const card = this.add
       .image(x, y, ASSET_KEYS.CARDS, CARD_BACK_FRAME)
       .setOrigin(0)
       .setScale(SCALE)
@@ -179,6 +239,7 @@ export class GameScene extends Phaser.Scene {
         y,
         cardIndex,
       });
+    return card;
   }
   #createCardsInHand(): void {
     this.#cardsInHand = [];
@@ -192,14 +253,236 @@ export class GameScene extends Phaser.Scene {
         cardIndex: cardIndex,
         zoneType: ZONE_TYPE.CARDS_IN_HAND,
         cardRef: card,
+        //originalY: LAYOUT.PLAYER_HAND.y,
+        isSelected: false,
       });
       this.#cardsInHand.push(cardGameObject);
       if (card.isFaceUp) {
         this.input.setDraggable(cardGameObject);
 
         cardGameObject.setFrame(this.#getCardFrame(card));
+        this.#makeCardSelectable(cardGameObject);
       }
     });
+  }
+
+  #makeCardSelectable(cardGameObject: Phaser.GameObjects.Image): void {
+    let pointerDownTime = 0;
+    let pointerDownPos = { x: 0, y: 0 };
+
+    cardGameObject.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      pointerDownTime = this.time.now;
+      pointerDownPos = { x: pointer.x, y: pointer.y };
+    });
+
+    cardGameObject.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+      // Calculate how much the pointer moved
+      const distance = Phaser.Math.Distance.Between(
+        pointerDownPos.x,
+        pointerDownPos.y,
+        pointer.x,
+        pointer.y
+      );
+
+      // Calculate how long the pointer was down
+      const duration = this.time.now - pointerDownTime;
+
+      // If pointer didn't move much and was quick, treat as click
+      // Otherwise, it was a drag
+      if (distance < 10 && duration < 300) {
+        this.#toggleCardSelection(cardGameObject);
+      }
+    });
+  }
+
+  #toggleCardSelection(cardGameObject: Phaser.GameObjects.Image): void {
+    const isSelected = cardGameObject.getData("isSelected") as boolean;
+    //const originalY = cardGameObject.getData("originalY") as number;
+
+    if (isSelected) {
+      cardGameObject.setData("isSelected", false);
+      this.input.setDraggable(cardGameObject, true);
+      this.#selectedCards.delete(cardGameObject);
+
+      const orderIndex = this.#selectionOrder.indexOf(cardGameObject);
+      if (orderIndex !== -1) {
+        this.#selectionOrder.splice(orderIndex, 1);
+      }
+
+      this.tweens.add({
+        targets: cardGameObject,
+        y: LAYOUT.PLAYER_HAND.y,
+        duration: 150,
+        ease: "Back.easeOut",
+      });
+      cardGameObject.clearTint();
+    } else {
+      cardGameObject.setData("isSelected", true);
+      this.input.setDraggable(cardGameObject, false);
+      this.#selectedCards.add(cardGameObject);
+      // Track selection order
+      this.#selectionOrder.push(cardGameObject);
+
+      this.tweens.add({
+        targets: cardGameObject,
+        y: LAYOUT.PLAYER_HAND.y - 10, // Move up 20px for better visibility
+        duration: 150,
+        ease: "Back.easeOut",
+      });
+      cardGameObject.setTint(0xffff00); // Yellow tint
+    }
+    // Validate after every selection change
+    this.#validateSelectedMelds();
+  }
+
+  #getSelectedCardsInOrder(): Card[] {
+    return this.#selectionOrder.map(
+      (cardGO) => cardGO.getData("cardRef") as Card
+    );
+  }
+
+  #splitIntoMeldGroups(cardsInOrder: Card[]): Card[][] {
+    const validMelds: Card[][] = [];
+    let currentGroup: Card[] = [];
+
+    for (let i = 0; i < cardsInOrder.length; i++) {
+      const card = cardsInOrder[i];
+      currentGroup.push(card);
+
+      // Check if we have at least 3 cards
+      if (currentGroup.length >= 3) {
+        // Check if current group is valid
+        const isValid =
+          this.#remi.isValidSet(currentGroup) ||
+          this.#remi.isValidRun(currentGroup);
+
+        if (isValid) {
+          // Continue - this group is still valid, keep adding cards
+          continue;
+        } else {
+          // Current group became invalid
+          // Check if the group WITHOUT the last card was valid
+          const groupWithoutLast = currentGroup.slice(0, -1);
+
+          if (groupWithoutLast.length >= 3) {
+            const wasValid =
+              this.#remi.isValidSet(groupWithoutLast) ||
+              this.#remi.isValidRun(groupWithoutLast);
+
+            if (wasValid) {
+              // Previous group was valid, save it
+              validMelds.push(groupWithoutLast);
+              // Start new group with current card
+              currentGroup = [card];
+            } else {
+              // Previous group was also invalid, keep trying
+              // (this shouldn't happen if we're checking continuously)
+            }
+          } else {
+            // Group too small, just continue
+          }
+        }
+      }
+    }
+
+    // Check the final group
+    if (currentGroup.length >= 3) {
+      const isValid =
+        this.#remi.isValidSet(currentGroup) ||
+        this.#remi.isValidRun(currentGroup);
+      if (isValid) {
+        validMelds.push(currentGroup);
+      }
+    }
+
+    return validMelds;
+  }
+  
+  #validateSelectedMelds(): void {
+  if (this.#selectedCards.size < 3) {
+    this.#currentMeldScore = 0;
+    this.#currentMelds = []; 
+    this.#updateMeldScoreDisplay();
+    this.#resetSelectionVisuals(); // Clear any coloring
+    return;
+  }
+  
+  // Get selected cards in the ORDER they were selected
+  const selectedInOrder = this.#getSelectedCardsInOrder();
+  
+  // Split into groups based on validity (do this ONCE)
+  this.#currentMelds = this.#splitIntoMeldGroups(selectedInOrder);
+  
+  // Calculate total score from valid melds
+  let totalScore = 0;
+  this.#currentMelds.forEach((meld) => {
+    totalScore += this.#calculateMeldValue(meld);
+  });
+  
+  this.#currentMeldScore = totalScore;
+  this.#updateMeldScoreDisplay();
+  
+  // Pass the already-calculated melds to visualization
+  this.#updateSelectionVisuals(this.#currentMelds);
+}
+
+#updateSelectionVisuals(melds: Card[][]): void {
+  // Safety check
+  if (!this.#selectionOrder || this.#selectionOrder.length === 0) {
+    return;
+  }
+
+  // Create a map of which meld each card belongs to
+  const cardToMeld = new Map<Card, number>();
+  this.#currentMelds.forEach((meld, meldIndex) => {
+    meld.forEach(card => {
+      cardToMeld.set(card, meldIndex);
+    });
+  });
+  
+  // Colors for different melds
+  const meldColors = [0xffff00, 0x00ff00, 0x00ffff, 0xff00ff];
+  
+  // Update each selected card's tint based on its meld
+  this.#selectionOrder.forEach((cardGO) => {
+    const cardRef = cardGO.getData('cardRef') as Card;
+    const meldIndex = cardToMeld.get(cardRef);
+    
+    if (meldIndex !== undefined) {
+      // Card is part of a valid meld
+      cardGO.setTint(meldColors[meldIndex % meldColors.length]);
+    } else {
+      // Card is not part of any valid meld
+      cardGO.setTint(0xff0000); // Red = invalid
+    }
+  });
+}
+
+#resetSelectionVisuals(): void {
+  // Safety check - only reset if there are selected cards
+  if (!this.#selectionOrder || this.#selectionOrder.length === 0) {
+    return;
+  }
+  
+  // Reset all selected cards to default yellow
+  this.#selectionOrder.forEach((cardGO) => {
+    cardGO.setTint(0xffff00); // Yellow
+  });
+}
+
+  #calculateMeldValue(meld: Card[]): number {
+    return meld.reduce((sum, card) => {
+      // Ace = 11 points
+      if (card.value === 1 || card.value === 14) {
+        return sum + 10;
+      }
+      // Face cards (Jack=11, Queen=12, King=13) = 10 points each
+      if (card.value >= 11 && card.value <= 13) {
+        return sum + 10;
+      }
+      // Number cards = face value (2=2, 3=3, ... 10=10)
+      return sum + card.value;
+    }, 0);
   }
 
   #createDragEvents(): void {
@@ -226,12 +509,47 @@ export class GameScene extends Phaser.Scene {
           gameObject.setInteractive(false);
           return;
         }
+        // If card is selected, deselect it when starting to drag
+        if (gameObject.getData("isSelected")) {
+          this.#toggleCardSelection(gameObject);
+        }
 
         gameObject.setData("origX", gameObject.x);
         gameObject.setData("origY", gameObject.y);
         gameObject.setDepth(2);
       }
     );
+  }
+
+  #updateMeldScoreDisplay(): void {
+    const meetsRequirement =
+      this.#hasOpenedInitialMeld || this.#currentMeldScore >= 51;
+
+    // Update text
+    this.#meldScoreText.setText(`${this.#currentMeldScore}`);
+
+    // Update color
+    if (this.#currentMeldScore === 0) {
+      this.#meldScoreText.setColor("#ffffff");
+    } else if (meetsRequirement) {
+      this.#meldScoreText.setColor("#00ff00"); // Green
+    } else {
+      this.#meldScoreText.setColor("#ff0000"); // Red
+    }
+
+    // Show/hide button
+    this.#updateMeldButton();
+  }
+
+  #updateMeldButton(): void {
+    // Show button if:
+    // 1. First time and score >= 51, OR
+    // 2. Already opened and has any valid meld (score > 0)
+    const shouldShow =
+      (!this.#hasOpenedInitialMeld && this.#currentMeldScore >= 51) ||
+      (this.#hasOpenedInitialMeld && this.#currentMeldScore > 0);
+
+    this.#meldButton.setVisible(shouldShow);
   }
   #createDragEventListener(): void {
     this.input.on(
@@ -382,11 +700,12 @@ export class GameScene extends Phaser.Scene {
 
     this.#cardsInHand.forEach((card, cardIndex) => {
       const finalX = layout.startX + cardIndex * layout.spacing;
+      const isSelected = card.getData("isSelected");
 
       this.tweens.add({
         targets: card,
         x: finalX,
-        y: LAYOUT.PLAYER_HAND.y,
+        y: isSelected ? LAYOUT.PLAYER_HAND.y - 10 : LAYOUT.PLAYER_HAND.y,
         scale: layout.scaleFactor,
         duration: LAYOUT.ANIMATION_DURATION,
         ease: "Sine.easeOut",
@@ -408,9 +727,17 @@ export class GameScene extends Phaser.Scene {
       const finalX = layout.startX + cardIndex * layout.spacing;
 
       let zone = this.add
-        .zone(finalX, LAYOUT.PLAYER_HAND.y, CARD_WIDTH * layout.scaleFactor, CARD_HEIGHT * layout.scaleFactor)
+        .zone(
+          finalX,
+          LAYOUT.PLAYER_HAND.y,
+          CARD_WIDTH * layout.scaleFactor,
+          CARD_HEIGHT * layout.scaleFactor
+        )
         .setOrigin(0)
-        .setRectangleDropZone(CARD_WIDTH * layout.scaleFactor, CARD_HEIGHT * layout.scaleFactor) // FIXED!
+        .setRectangleDropZone(
+          CARD_WIDTH * layout.scaleFactor,
+          CARD_HEIGHT * layout.scaleFactor
+        ) // FIXED!
         .setData({
           zoneType: ZONE_TYPE.CARDS_IN_HAND,
           positionIndex: cardIndex,
@@ -445,24 +772,31 @@ export class GameScene extends Phaser.Scene {
     startX: number;
     spacing: number;
     scaleFactor: number;
-    numCards: number
+    numCards: number;
   } {
     const numCards = this.#cardsInHand.length;
 
     // If no cards, return defaults
     if (numCards === 0) {
-      return { startX: LAYOUT.PLAYER_HAND.x, spacing: 0, scaleFactor: 1, numCards: 0 };
+      return {
+        startX: LAYOUT.PLAYER_HAND.x,
+        spacing: 0,
+        scaleFactor: 1,
+        numCards: 0,
+      };
     }
 
     // Calculate how wide the hand would be without scaling
-    const unscaledTotalWidth = CARD_WIDTH + (numCards - 1) * LAYOUT.CARD_SPACING;
+    const unscaledTotalWidth =
+      CARD_WIDTH + (numCards - 1) * LAYOUT.CARD_SPACING;
 
     // Scale down if too wide, but never smaller than MIN_SCALE
     let scaleFactor = Math.min(1, LAYOUT.MAX_HAND_WIDTH / unscaledTotalWidth);
     scaleFactor = Math.max(scaleFactor, LAYOUT.MIN_SCALE);
 
     // Calculate actual width after scaling
-    const scaledTotalWidth = CARD_WIDTH * scaleFactor +
+    const scaledTotalWidth =
+      CARD_WIDTH * scaleFactor +
       (numCards - 1) * (LAYOUT.CARD_SPACING * scaleFactor);
 
     // Center the hand by calculating empty space on sides
