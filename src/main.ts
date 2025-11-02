@@ -5,7 +5,7 @@ import { GameScene } from './scenes/game-scene';
 
 const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.WEBGL,
-  pixelArt: true,
+  //pixelArt: true,
   scale: {
     parent: 'game-container',
     // width: 640,

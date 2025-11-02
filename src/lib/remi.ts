@@ -23,7 +23,7 @@ export class Remi {
     this.#deck.reset();
     this.#cardsInHand = [];
 
-    for (let i = 0; i < 15; i += 1) {
+    for (let i = 0; i < 14; i += 1) {
       const card = this.#deck.draw() as Card;
       card.flip();
       this.#cardsInHand.push(card);
@@ -59,100 +59,101 @@ export class Remi {
     return true;
   }
 
-  isValidSet(cards: Card[]): boolean {
-    if (cards.length < 3) return false;
+  // In your Remi class (lib/remi.ts)
 
-    // Separate aces from other cards
-    const aces = cards.filter((card) => card.value === 1 || card.value === 14);
-    const nonAces = cards.filter(
-      (card) => card.value !== 1 && card.value !== 14
-    );
+isJoker(card: Card): boolean {
+  return card.suit === 'JOKER_RED' || 
+         card.suit === 'JOKER_BLACK' || 
+         card.value === 14; // If jokers are stored with value 14
+}
 
-    // If no non-ace cards, can't determine what rank aces should be
-    if (nonAces.length === 0) return false;
+isValidSet(cards: Card[]): boolean {
+  if (cards.length < 3) return false;
+  
+  const jokers = cards.filter(c => this.isJoker(c));
+  const regularCards = cards.filter(c => !this.isJoker(c));
 
-    // All non-ace cards must have the same rank
-    const rank = nonAces[0].value;
-    const allSameRank = nonAces.every((card) => card.value === rank);
-    if (!allSameRank) return false;
-
-    // All cards (including aces) must have different suits
-    const suits = new Set(cards.map((card) => card.suit));
-    const allDifferentSuits = suits.size === cards.length;
-
-    return allDifferentSuits;
+  if (jokers.length > 1) return false;
+  
+  // Must have at least one regular card to define the set
+  if (regularCards.length === 0) return false;
+  
+  // Normalize ace values for comparison (treat all aces as value 1)
+  const normalizeValue = (card: Card): number => {
+    return card.value === 14 ? 1 : card.value;
+  };
+  
+  // All regular cards must have same value
+  const targetValue = normalizeValue(regularCards[0]);
+  if (!regularCards.every(c => normalizeValue(c) === targetValue)) {
+    return false;
   }
-
-  isValidRun(cards: Card[]): boolean {
-    if (cards.length < 3) return false;
-
-    // All cards must be the same suit
-    const suit = cards[0].suit;
-    if (!cards.every((card) => card.suit === suit)) return false;
-
-    // Separate aces from other cards
-    const aces = cards.filter((card) => card.value === 1 || card.value === 14);
-    const nonAces = cards.filter(
-      (card) => card.value !== 1 && card.value !== 14
-    );
-
-    // If all aces, can't form a valid run
-    if (nonAces.length === 0) return false;
-
-    // Sort non-ace cards
-    const sorted = [...nonAces].sort((a, b) => a.value - b.value);
-    const minValue = sorted[0].value;
-    const maxValue = sorted[sorted.length - 1].value;
-
-    // Check if aces are in natural positions (1 or 14)
-    let naturalAces = 0;
-    let gapFillingAces = aces.length;
-
-    // Check for natural ace at start (value = 1, and minValue = 2)
-    if (minValue === 2 && aces.length > 0) {
-      naturalAces++;
-      gapFillingAces--;
-    }
-
-    // Check for natural ace at end (value = 14, and maxValue = 13)
-    if (maxValue === 13 && aces.length > naturalAces) {
-      naturalAces++;
-      gapFillingAces--;
-    }
-
-    // For gap-filling aces
-    const gaps = this.#findGapsInSequence(sorted, minValue, maxValue);
-
-    // Must have exactly as many gap-filling aces as gaps
-    if (gaps.length !== gapFillingAces) return false;
-
-    // Check if any gaps are adjacent (would require adjacent aces)
-    for (let i = 1; i < gaps.length; i++) {
-      if (gaps[i] === gaps[i - 1] + 1) {
-        return false; // Adjacent gaps not allowed
-      }
-    }
-
-    // Verify total length makes sense
-    const expectedLength = maxValue - minValue + 1 + naturalAces;
-    if (expectedLength !== cards.length) return false;
-
-    return true;
+  
+  // All regular cards must have different suits
+  const suits = new Set(regularCards.map(c => c.suit));
+  if (suits.size !== regularCards.length) {
+    return false;
   }
-  // Helper method to find missing values in sequence
-  #findGapsInSequence(
-    sortedCards: Card[],
-    minValue: number,
-    maxValue: number
-  ): number[] {
-    const gaps: number[] = [];
-    const presentValues = new Set(sortedCards.map((c) => c.value));
+  
+  // Valid set: same value, different suits, can have jokers
+  // Maximum 4 cards in a set (one per suit)
+  return cards.length <= 4;
+}
 
-    for (let value = minValue; value <= maxValue; value++) {
-      if (!presentValues.has(value as any)) {
-        gaps.push(value);
-      }
-    }
-    return gaps;
+isValidRun(cards: Card[]): boolean {
+  if (cards.length < 3) return false;
+  
+  const jokers = cards.filter(c => this.isJoker(c));
+  const regularCards = cards.filter(c => !this.isJoker(c));
+
+  if (jokers.length > 1) return false;
+  
+  if (regularCards.length === 0) return false;
+  
+  // All regular cards must be same suit
+  const suit = regularCards[0].suit;
+  if (!regularCards.every(c => c.suit === suit)) return false;
+
+  // // ✅ NEW: Check for adjacent jokers
+  // if (!this.#hasNoAdjacentJokers(cards)) {
+  //   return false;
+  // }
+  
+  // Get values and sort them
+  const sortedValues = regularCards.map(c => c.value).sort((a, b) => a - b);
+  
+  // Check if we can form a sequence with jokers
+  return this.#canFormSequence(sortedValues, jokers.length);
+}
+
+// #hasNoAdjacentJokers(cards: Card[]): boolean {
+//   for (let i = 0; i < cards.length - 1; i++) {
+//     if (this.isJoker(cards[i]) && this.isJoker(cards[i + 1])) {
+//       return false; // Found adjacent jokers - invalid!
+//     }
+//   }
+//   return true; // No adjacent jokers found
+// }
+
+#canFormSequence(sortedValues: number[], jokerCount: number): boolean {
+  if (sortedValues.length === 0) return false;
+  
+  let jokersNeeded = 0;
+  
+  for (let i = 1; i < sortedValues.length; i++) {
+    const gap = sortedValues[i] - sortedValues[i - 1] - 1;
+    
+    // Duplicate cards in run = invalid
+    if (gap < 0) return false;
+    
+    jokersNeeded += gap;
+    
+    // Not enough jokers to fill gaps
+    if (jokersNeeded > jokerCount) return false;
   }
+  
+  return true;
+}
+
+
 }
