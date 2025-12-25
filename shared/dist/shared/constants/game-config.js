@@ -1,0 +1,77 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.FEATURES = exports.DEBUG_CONFIG = exports.TIMING_CONFIG = exports.POINTS_CONFIG = exports.VALIDATION_CONFIG = exports.JOKER_SUITS = exports.REGULAR_SUITS = exports.SUITS = exports.PHASE_ORDER = exports.CARD_VALUES = exports.GAME_CONFIG = void 0;
+exports.GAME_CONFIG = {
+    MIN_PLAYERS: 2,
+    MAX_PLAYERS: 4,
+    INITIAL_HAND_SIZE: 14,
+    MAX_HAND_SIZE: 15,
+    NUM_DECKS: 2,
+    CARDS_PER_DECK: 54,
+    OPENING_REQUIREMENT: 51,
+    MIN_MELD_SIZE: 3,
+    MAX_SET_SIZE: 4,
+    ACE_VALUE: 10,
+    FACE_CARD_VALUE: 10,
+    JOKER_VALUE: 0,
+    TURN_TIMEOUT: 60000,
+    GAME_TIMEOUT: 3600000,
+    INACTIVITY_TIMEOUT: 300000,
+    ROOM_CODE_LENGTH: 6,
+    ROOM_CLEANUP_INTERVAL: 60000,
+    INACTIVE_ROOM_TIMEOUT: 1800000,
+    RECONNECT_TIMEOUT: 30000,
+    MAX_RECONNECT_ATTEMPTS: 5,
+};
+exports.CARD_VALUES = {
+    ACE_LOW: 1,
+    ACE_HIGH: 14,
+    JACK: 11,
+    QUEEN: 12,
+    KING: 13,
+    JOKER: 14,
+};
+exports.PHASE_ORDER = ['DRAW', 'MELD', 'DISCARD'];
+exports.SUITS = ['HEART', 'DIAMOND', 'SPADE', 'CLUB', 'JOKER_RED', 'JOKER_BLACK'];
+exports.REGULAR_SUITS = ['HEART', 'DIAMOND', 'SPADE', 'CLUB'];
+exports.JOKER_SUITS = ['JOKER_RED', 'JOKER_BLACK'];
+exports.VALIDATION_CONFIG = {
+    ALLOW_HIGH_ACE_RUNS: true,
+    ALLOW_WRAP_AROUND_RUNS: false,
+    MAX_JOKERS_IN_SET: 3,
+    REQUIRE_NATURAL_CARDS: true,
+    REQUIRE_DISCARD_TO_END_TURN: true,
+    ALLOW_REORDER_HAND: true,
+    ALLOW_UNDO_MELDS: false,
+};
+exports.POINTS_CONFIG = {
+    WIN_BONUS: 100,
+    GOING_REMI_BONUS: 200,
+    DEADWOOD_PENALTY_MULTIPLIER: 1,
+    TIMEOUT_PENALTY: 50,
+    DISCONNECT_PENALTY: 100,
+};
+exports.TIMING_CONFIG = {
+    CARD_DEAL_DELAY: 50,
+    CARD_DRAW_ANIMATION: 300,
+    CARD_DISCARD_ANIMATION: 300,
+    MELD_LAY_ANIMATION: 400,
+    TURN_CHANGE_DELAY: 500,
+    MESSAGE_DISPLAY_TIME: 2000,
+};
+exports.DEBUG_CONFIG = {
+    ENABLE_LOGGING: process.env.NODE_ENV !== 'production',
+    LOG_GAME_EVENTS: false,
+    LOG_VALIDATION: false,
+    SKIP_OPENING_REQUIREMENT: false,
+    FAST_AI_TURNS: false,
+};
+exports.FEATURES = {
+    ENABLE_CHAT: true,
+    ENABLE_EMOTES: true,
+    ENABLE_SPECTATORS: false,
+    ENABLE_TOURNAMENTS: false,
+    ENABLE_ACHIEVEMENTS: false,
+    ENABLE_STATISTICS: true,
+};
+//# sourceMappingURL=game-config.js.map

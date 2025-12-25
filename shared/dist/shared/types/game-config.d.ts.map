@@ -1,0 +1,1 @@
+{"version":3,"file":"game-config.d.ts","sourceRoot":"","sources":["../../../types/game-config.ts"],"names":[],"mappings":"AACA,MAAM,WAAW,UAAU;IACzB,UAAU,EAAE,MAAM,CAAC;IACnB,MAAM,EAAE,MAAM,CAAC;IACf,OAAO,EAAE,MAAM,CAAC;IAGhB,QAAQ,CAAC,EAAE,OAAO,CAAC;IACnB,QAAQ,CAAC,EAAE,MAAM,CAAC;CACnB"}
