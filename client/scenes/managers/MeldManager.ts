@@ -25,7 +25,7 @@ export const MELD_CONFIG = {
   START_X: 300,
   START_Y: 480,
   CARD_OVERLAP: 25,
-  MELD_SPACING: 250,
+  MELD_SPACING: 220,
   ROW_SPACING: 100,
   MAX_MELDS_PER_ROW: 5,
   CARD_SCALE: 1,
@@ -37,7 +37,7 @@ export const MELD_CONFIG = {
 const OPPONENT_MELD_CONFIG = {
   START_X: 300,
   START_Y: 100,
-  MELD_SPACING: 250,
+  MELD_SPACING: 220,
   ROW_SPACING: 100,
 } as const;
 
@@ -179,9 +179,8 @@ export class MeldManager {
         .image(x, y, ASSET_KEYS.CARDS, this.getCardFrame(card))
         .setScale(SCALE * MELD_CONFIG.CARD_SCALE)
         .setDepth(DEPTHS.CARDS + cardIndex)
-        .setData('cardId', card.id) // <--- CRITICAL FIX: This links the visual to the logic
+        .setData("cardId", card.id) // <--- CRITICAL FIX: This links the visual to the logic
         .setInteractive({ draggable: false }); // Good practice to ensure meld cards aren't draggable
-
 
       // If it's an opponent meld, hide the card initially
       if (!isMe) {
@@ -283,7 +282,7 @@ export class MeldManager {
     this.scene.tweens.killTweensOf(cardGO);
 
     // 2. Set the cardId on the new sprite so we can match it
-    cardGO.setData('cardId', card.id);
+    cardGO.setData("cardId", card.id);
 
     // 3. Add new sprite to the array
     meld.cards.push(cardGO);
@@ -303,13 +302,13 @@ export class MeldManager {
       const finalY = meld.position.y;
 
       // Find the sprite for this card
-      const sprite = meld.cards.find(go => go.getData('cardId') === cardData.id);
+      const sprite = meld.cards.find(
+        (go) => go.getData("cardId") === cardData.id
+      );
 
       if (sprite) {
         sprite.clearTint();
-        sprite.setData('isSelected', false);
-        sprite.setDepth(DEPTHS.CARDS + index);
-
+        sprite.setData("isSelected", false);
 
         // Animate to correct sorted position
         this.scene.tweens.add({
@@ -317,10 +316,11 @@ export class MeldManager {
           x: finalX,
           y: finalY,
           duration: 150,
-          ease: 'Back.easeOut',
+          ease: "Back.easeOut",
           onComplete: () => {
             sprite.disableInteractive();
-          }
+            sprite.setDepth(DEPTHS.CARDS + index);
+          },
         });
       }
     });
@@ -336,64 +336,68 @@ export class MeldManager {
     meld: PlayerMeld,
     cardGO: Phaser.GameObjects.Image,
     card: Card,
-    replacedJoker: Card, 
+    replacedJoker: Card,
     sortedMeldData: Card[]
   ): JokerReplacementResult | null {
-    const jokerGO = meld.cards.find(go => go.getData('cardId') === replacedJoker.id);
-  
-  const jokerPosition = jokerGO 
-    ? { x: jokerGO.x, y: jokerGO.y }
-    : { x: meld.position.x, y: meld.position.y };
+    const jokerGO = meld.cards.find(
+      (go) => go.getData("cardId") === replacedJoker.id
+    );
 
-  // Set cardId on new sprite
-  cardGO.setData('cardId', card.id);
-  cardGO.setScale(SCALE * MELD_CONFIG.CARD_SCALE);
-  cardGO.setOrigin(0.5, 0.5);
-  
-  // Remove joker sprite from array
-  if (jokerGO) {
-    const jokerIdx = meld.cards.indexOf(jokerGO);
-    if (jokerIdx !== -1) {
-      meld.cards.splice(jokerIdx, 1);
-    }
-    this.destroyCardSafely(jokerGO);
-  }
-  
-  // Add new card sprite
-  meld.cards.push(cardGO);
-  
-  // Update cardData to match sorted logic data
-  meld.cardData = [...sortedMeldData];
-  
-  // Reposition ALL cards based on sorted order
-  sortedMeldData.forEach((cardData, index) => {
-    const finalX = meld.position.x + index * MELD_CONFIG.CARD_OVERLAP;
-    const finalY = meld.position.y;
-    
-    const sprite = meld.cards.find(go => go.getData('cardId') === cardData.id);
-    
-    if (sprite) {
-      this.scene.tweens.add({
-        targets: sprite,
-        x: finalX,
-        y: finalY,
-        duration: 300,
-        ease: 'Back.easeOut',
-        onComplete: () => {
-          sprite.disableInteractive();
-        }
-      });
-      sprite.setDepth(DEPTHS.CARDS + index);
-    }
-  });
-  
-  this.recreateMeldDropZone(meld);
-  this.config.showMessage('Joker replaced and returned to hand!');
+    const jokerPosition = jokerGO
+      ? { x: jokerGO.x, y: jokerGO.y }
+      : { x: meld.position.x, y: meld.position.y };
 
-  return {
-    replacedJoker,
-    jokerStartPosition: jokerPosition,
-  };
+    // Set cardId on new sprite
+    cardGO.setData("cardId", card.id);
+    cardGO.setScale(SCALE * MELD_CONFIG.CARD_SCALE);
+    cardGO.setOrigin(0.5, 0.5);
+
+    // Remove joker sprite from array
+    if (jokerGO) {
+      const jokerIdx = meld.cards.indexOf(jokerGO);
+      if (jokerIdx !== -1) {
+        meld.cards.splice(jokerIdx, 1);
+      }
+      this.destroyCardSafely(jokerGO);
+    }
+
+    // Add new card sprite
+    meld.cards.push(cardGO);
+
+    // Update cardData to match sorted logic data
+    meld.cardData = [...sortedMeldData];
+
+    // Reposition ALL cards based on sorted order
+    sortedMeldData.forEach((cardData, index) => {
+      const finalX = meld.position.x + index * MELD_CONFIG.CARD_OVERLAP;
+      const finalY = meld.position.y;
+
+      const sprite = meld.cards.find(
+        (go) => go.getData("cardId") === cardData.id
+      );
+
+      if (sprite) {
+        this.scene.tweens.add({
+          targets: sprite,
+          x: finalX,
+          y: finalY,
+          duration: 300,
+          ease: "Back.easeOut",
+          onComplete: () => {
+            sprite.disableInteractive();
+          },
+        });
+        sprite.setDepth(DEPTHS.CARDS + index);
+      }
+    });
+
+    this.recreateMeldDropZone(meld);
+    this.config.showMessage("Joker replaced and returned to hand!");
+
+    return {
+      replacedJoker,
+      jokerStartPosition: jokerPosition,
+    };
   }
 
   /**
@@ -401,7 +405,7 @@ export class MeldManager {
    */
   addCardDataToMeld(meldOwner: number, meldIndex: number, card: Card): void {
     // Logic layer already updated cardData - nothing to do here
-  // This method exists just for compatibility/clarity
+    // This method exists just for compatibility/clarity
   }
 
   // ===========================================================================
@@ -416,7 +420,7 @@ export class MeldManager {
     getMeldsData: () => Card[][] | CardData[][]
   ): void {
     if (this.displayedOpponentMelds === playerIndex) {
-      this.hideOpponentMelds();
+      //this.hideOpponentMelds();
     } else {
       this.showOpponentMelds(playerIndex, getMeldsData());
     }
@@ -425,7 +429,10 @@ export class MeldManager {
   /**
    * Show opponent's melds in the display area
    */
-  public showOpponentMelds(playerIndex: number, melds: Card[][] | CardData[][]): void {
+  public showOpponentMelds(
+    playerIndex: number,
+    melds: Card[][] | CardData[][]
+  ): void {
     // 1. Hide all opponent melds/drop-zones first
     this.allPlayerMelds.forEach((playerMelds, pIndex) => {
       if (!this.isMyMeld(pIndex)) {
@@ -448,7 +455,7 @@ export class MeldManager {
     }
 
     this.displayedOpponentMelds = playerIndex;
-    
+
     // Clean up the old display container if it exists to avoid conflicts
     if (this.opponentMeldDisplay) {
       this.opponentMeldDisplay.destroy();
@@ -471,7 +478,7 @@ export class MeldManager {
         });
       }
     });
-    
+
     // Clean up old container
     if (this.opponentMeldDisplay) {
       this.opponentMeldDisplay.destroy();
@@ -529,8 +536,7 @@ export class MeldManager {
       player.melds.forEach((meld: CardData[], meldIndex: number) => {
         const cards = convertCards(meld);
         // Use 0 for "me" index when it's my melds
-        const displayIndex = player.id === myPlayerId ? 0 : playerIndex;
-        this.createMeldVisual(displayIndex, cards, meldIndex);
+        this.createMeldVisual(playerIndex, cards, meldIndex);
       });
     });
   }
@@ -625,10 +631,9 @@ export class MeldManager {
         x:
           OPPONENT_MELD_CONFIG.START_X +
           col * OPPONENT_MELD_CONFIG.MELD_SPACING,
-        y:
-          OPPONENT_MELD_CONFIG.START_Y
-          // playerYOffset +
-          // row * OPPONENT_MELD_CONFIG.ROW_SPACING,
+        y: OPPONENT_MELD_CONFIG.START_Y,
+        // playerYOffset +
+        // row * OPPONENT_MELD_CONFIG.ROW_SPACING,
       };
     }
   }
@@ -657,7 +662,6 @@ export class MeldManager {
       : playerIndex === 0;
   }
 
-
   private recreateMeldDropZone(meld: PlayerMeld): void {
     if (meld.dropZone) {
       meld.dropZone.destroy();
@@ -668,31 +672,56 @@ export class MeldManager {
       meld.highlight = null;
     }
 
-    // Create new drop zone after a small delay to ensure cards are positioned
-    this.scene.time.delayedCall(100, () => {
-      const cardCount = meld.cards.length;
-      const width =
-        cardCount * MELD_CONFIG.CARD_OVERLAP +
-        CARD_WIDTH * SCALE +
-        MELD_CONFIG.DROP_ZONE_PADDING * 2;
-      const height = CARD_HEIGHT * SCALE + MELD_CONFIG.DROP_ZONE_PADDING * 2;
+    // No delay needed! We calculate based on logic, not animation.
 
-      // Calculate center based on actual card positions
-      const firstCard = meld.cards[0];
-      const lastCard = meld.cards[cardCount - 1];
-      const centerX = (firstCard.x + lastCard.x) / 2;
-      const centerY = meld.position.y;
+    const cardCount = meld.cards.length;
+    if (cardCount === 0) return;
 
-      const { dropZone, highlight } = this.createMeldDropZone(
-        { x: centerX, y: centerY },
-        cardCount,
-        meld.meldIndex,
-        meld.meldOwner
-      );
+    // 1. Calculate Center based on Logic (not animation)
+    // The first card is at 'meld.position.x'.
+    // The cards extend to the right by (count-1)*overlap.
+    const offset = ((cardCount - 1) * MELD_CONFIG.CARD_OVERLAP) / 2;
+    const centerX = meld.position.x + offset;
+    const centerY = meld.position.y;
 
-      meld.dropZone = dropZone;
-      meld.highlight = highlight;
+    // 2. Calculate Correct Width
+    // Actual visual span = (Count-1) * Overlap + CardWidth
+    const contentWidth =
+      (cardCount - 1) * MELD_CONFIG.CARD_OVERLAP + CARD_WIDTH * SCALE;
+    const width = contentWidth + MELD_CONFIG.DROP_ZONE_PADDING * 2;
+    const height = CARD_WIDTH * SCALE + MELD_CONFIG.DROP_ZONE_PADDING * 2;
+
+    // 3. Create Highlight
+    const highlight = this.scene.add
+      .rectangle(centerX, centerY, width, height)
+      .setStrokeStyle(2, 0x00ff00, 0)
+      .setFillStyle(0x00ff00, 0)
+      .setDepth(DEPTHS.CARDS - 1);
+
+    // 4. Create Drop Zone
+    const dropZone = this.scene.add
+      .zone(centerX, centerY, width, height)
+      .setRectangleDropZone(width, height)
+      .setData({
+        zoneType: "MELD_TABLE",
+        meldIndex: meld.meldIndex,
+        playerIndex: meld.meldOwner,
+      });
+
+    // 5. Add Interaction Events
+    dropZone.on("dragenter", () => {
+      highlight.setStrokeStyle(3, 0x00ff00, 1);
+      highlight.setFillStyle(0x00ff00, 0.2);
     });
+
+    dropZone.on("dragleave", () => {
+      highlight.setStrokeStyle(2, 0x00ff00, 0);
+      highlight.setFillStyle(0x00ff00, 0);
+    });
+
+    // Assign back to meld
+    meld.dropZone = dropZone;
+    meld.highlight = highlight;
   }
 
   private destroyCardSafely(cardGO: Phaser.GameObjects.Image): void {

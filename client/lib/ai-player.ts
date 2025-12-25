@@ -217,11 +217,16 @@ export class AIPlayer {
 
       const solution = this.solveHandWithValidation(hand, logic, playerIndex);
 
+      // DEBUG LOGGING
+      console.log(`[AI ${playerIndex}] Turn ${this.turnNumber}: hand=${hand.length} cards, hasOpened=${hasOpened}, solution.totalScore=${solution.totalScore}, solution.melds=${solution.melds.length}, canGoOut=${solution.canGoOut}`);
+
       let meldsToLay: Card[][] = [];
       const cardsToAddToMelds: Array<{ card: Card; meldOwner: number; meldIndex: number }> = [];
 
       // Determine melds to lay
       meldsToLay = this.determineMeldsToLay(solution, hasOpened, hand, logic, playerIndex);
+      
+      console.log(`[AI ${playerIndex}] Decision: laying ${meldsToLay.length} melds (total score: ${meldsToLay.reduce((sum, m) => sum + this.calcScore(m), 0)})`);
 
       // Order cards properly
       meldsToLay = meldsToLay.map(meld => this.orderCardsInMeldAdvanced(meld));
@@ -272,6 +277,8 @@ export class AIPlayer {
       }
 
       this.trackSeenCard(cardToDiscard);
+      
+      console.log(`[AI ${playerIndex}] Discarding: ${cardToDiscard.suit} ${cardToDiscard.value}`);
 
       return { meldsToLay, cardToDiscard, cardsToAddToMelds };
 
@@ -726,38 +733,68 @@ export class AIPlayer {
     let meldsToLay: Card[][] = [];
     const totalScore = solution.totalScore;
 
+    // No melds found
+    if (solution.melds.length === 0) {
+      return [];
+    }
+
     if (this.config.difficulty === AIDifficulty.HARD || 
         this.config.difficulty === AIDifficulty.EXPERT) {
       if (hasOpened) {
+        // Already opened - be more strategic about laying additional melds
         if (solution.canGoOut && solution.remainingCards.length === 1) {
+          // Can win! Lay everything
           meldsToLay = solution.melds;
         } else if (solution.remainingCards.length <= 3 && solution.deadwoodValue <= 15) {
+          // Close to winning - lay melds
           meldsToLay = solution.melds;
-        } else if (totalScore >= 30) {
-          const highValueMelds = solution.melds.filter(m => this.calcScore(m) >= 15);
-          meldsToLay = highValueMelds.length > 0 ? highValueMelds : solution.melds;
-        } else {
-          meldsToLay = solution.melds.slice(0, Math.max(1, Math.floor(solution.melds.length / 2)));
+        } else if (totalScore >= 20) {
+          // Decent melds - lay them to reduce hand size
+          meldsToLay = solution.melds;
+        } else if (solution.melds.length > 0) {
+          // Lay at least some melds to reduce hand size
+          meldsToLay = solution.melds;
         }
       } else {
+        // Not opened yet - need 51+ points to open
         if (totalScore >= 51) {
           const remainingAfterMelds = hand.filter(c =>
             !solution.melds.flat().some(mc => mc.id === c.id)
           );
           const remainingDeadwood = this.calculateDeadwood(remainingAfterMelds);
 
-          if (remainingDeadwood <= 10 && remainingAfterMelds.length <= 2) {
-            meldsToLay = [];
-          } else if (totalScore >= 70) {
+          // STRATEGIC DECISION: Should we open now?
+          // 
+          // In Rummy, opening is almost ALWAYS good because:
+          // 1. You can start adding cards to your melds
+          // 2. You reduce your hand size (less penalty if someone else wins)
+          // 3. You put pressure on opponents
+          //
+          // The ONLY reason to hold back is if you're about to win anyway
+          // and don't want to reveal your hand.
+
+          // Can win immediately? Always lay!
+          if (solution.canGoOut && remainingAfterMelds.length === 1) {
             meldsToLay = solution.melds;
-          } else if (remainingAfterMelds.length <= 4) {
+          }
+          // Very close to winning (2-3 cards, low deadwood) - MAYBE hold back
+          else if (remainingDeadwood <= 15 && remainingAfterMelds.length <= 3) {
+            // Only hold back 30% of the time for unpredictability
+            if (Math.random() < 0.3) {
+              console.log(`[AI ${playerIndex}] Holding back - close to winning`);
+              meldsToLay = [];
+            } else {
+              meldsToLay = solution.melds;
+            }
+          }
+          // DEFAULT: If we have 51+ points, OPEN!
+          else {
             meldsToLay = solution.melds;
-          } else {
-            meldsToLay = [];
           }
         }
       }
     } else {
+      // MEDIUM/EASY difficulty - simple logic: if you can open, open!
       if (hasOpened) {
         meldsToLay = solution.melds;
       } else if (totalScore >= 51) {

@@ -7,7 +7,6 @@ import { GameEventType, GamePhase } from "../../lib/game-event";
 import { SCENE_KEYS, COLORS, DEPTHS, ASSET_KEYS } from "../common";
 import { UIHelpers } from "../../lib/ui-helpers";
 
-
 // Import managers
 import {
   HandManager,
@@ -618,96 +617,172 @@ export class SinglePlayerHandler {
   }
 
   private onCardAddedToMeld(event: any): void {
-  const { playerIndex, card, meldOwner, meldIndex, replacedJoker } = event;
+    const { playerIndex, card, meldOwner, meldIndex, replacedJoker } = event;
 
-  console.log("🃏 onCardAddedToMeld:", {
-    playerIndex,
-    card: card.id,
-    meldOwner,
-    meldIndex,
-    hasReplacedJoker: !!replacedJoker,
-  });
-
-  const meld = this.gameScene.meldManager.getMeld(meldOwner, meldIndex);
-  if (!meld) {
-    console.error("Meld not found");
-    return;
-  }
-
-  // Get the SORTED meld data from logic layer (already includes the new card)
-  const sortedMeldData = this.logic?.getPlayerMelds(meldOwner)?.[meldIndex] ?? [];
-
-  if (playerIndex === 0) {
-    // HUMAN adding a card
-    const cardGO = this.gameScene.handManager.removeCard(card);
-    if (!cardGO) {
-      console.error("Card not found in hand:", card.id);
+    const meld = this.gameScene.meldManager.getMeld(meldOwner, meldIndex);
+    if (!meld) {
+      console.error("Meld not found");
       return;
     }
 
-    if (replacedJoker) {
-      const result = this.gameScene.meldManager.handleJokerReplacement(
-        meld,
-        cardGO,
-        card,
-        replacedJoker,
-        sortedMeldData  // Pass sorted data
+    // 1. Get the meld data from logic layer
+    const rawMeldData =
+      this.logic?.getPlayerMelds(meldOwner)?.[meldIndex] ?? [];
+
+    // 2. CLONE the data to avoid "frozen" state issues
+    let sortedMeldData = [...rawMeldData];
+
+    if (sortedMeldData.length > 0) {
+      // Check if all cards have the same suit (indicating a Run)
+      const nonJokers = sortedMeldData.filter(
+        (c: Card) => !c.suit.includes("JOKER")
       );
-      if (result) {
-        this.gameScene.handManager.addCard(
-          replacedJoker,
-          result.jokerStartPosition.x,
-          result.jokerStartPosition.y
-        );
-      }
-    } else {
-      this.gameScene.meldManager.addCardToMeldVisual(meld, cardGO, card, sortedMeldData);
-    }
 
-    this.gameScene.handManager.updateHandDisplay();
-    this.gameScene.handManager.updateHandDropZones();
+      // Detect if it's a RUN (all non-jokers have the same suit)
+      const isRun =
+        nonJokers.length > 0 &&
+        nonJokers.every((c: Card) => c.suit === nonJokers[0].suit);
 
-    if (this.gameScene.handManager.getHandCards().length === 0) {
-      this.gameScene.time.delayedCall(500, () => {
-        this.logic?.checkGameOver();
+      sortedMeldData.sort((a: Card, b: Card) => {
+        // Handle Jokers: If comparing Joker vs Non-Joker, we need a strategy.
+        // Strategy: Treat Joker as having a value that fits the sequence?
+        // For simplicity in the View Layer: Sort non-jokers, then append/prepend jokers?
+        // BETTER: Try to sort naturally, but if one is Joker, we handle it specially.
+
+        const aIsJoker = a.suit.includes("JOKER");
+        const bIsJoker = b.suit.includes("JOKER");
+
+        // If both are Jokers, sort by suit/color
+        if (aIsJoker && bIsJoker) return a.suit.localeCompare(b.suit);
+
+        // If only one is Joker
+        if (aIsJoker && !bIsJoker) return 1; // Push Jokers to end
+        if (!aIsJoker && bIsJoker) return -1;
+
+        // Normal Card Comparison
+        if (isRun) {
+          // RUN: Sort by Value (Ascending)
+          return a.value - b.value;
+        } else {
+          // SET: Sort by Suit (Bridge Order), then Value
+          const suitOrder: Record<string, number> = {
+            CLUB: 0,
+            DIAMOND: 1,
+            HEART: 2,
+            SPADE: 3,
+          };
+
+          const suitDiff =
+            (suitOrder[a.suit] || 99) - (suitOrder[b.suit] || 99);
+          if (suitDiff !== 0) return suitDiff;
+
+          return a.value - b.value;
+        }
       });
     }
-  } else {
-    // AI adding a card
-    if (meldOwner === 0) {
-      // AI adding to MY meld
-      const startPos = { x: 100 + playerIndex * 200, y: 100 };
-      const cardSprite = this.gameScene.handManager.createCardSprite(
-        card,
-        startPos.x,
-        startPos.y
-      );
+
+    if (playerIndex === 0) {
+      // HUMAN adding a card
+      const cardGO = this.gameScene.handManager.removeCard(card);
+      if (!cardGO) {
+        console.error("Card not found in hand:", card.id);
+        return;
+      }
 
       if (replacedJoker) {
         const result = this.gameScene.meldManager.handleJokerReplacement(
           meld,
-          cardSprite,
+          cardGO,
           card,
           replacedJoker,
+          sortedMeldData // Pass sorted data
+        );
+        if (result) {
+          this.gameScene.handManager.addCard(
+            replacedJoker,
+            result.jokerStartPosition.x,
+            result.jokerStartPosition.y
+          );
+        }
+      } else {
+        this.gameScene.meldManager.addCardToMeldVisual(
+          meld,
+          cardGO,
+          card,
           sortedMeldData
         );
-        this.gameScene.showMessage(`AI replaced your Joker!`);
-      } else {
-        this.gameScene.meldManager.addCardToMeldVisual(meld, cardSprite, card, sortedMeldData);
-        this.gameScene.showMessage(`AI added card to your meld!`);
+      }
+
+      this.gameScene.handManager.updateHandDisplay();
+      this.gameScene.handManager.updateHandDropZones();
+
+      if (this.gameScene.handManager.getHandCards().length === 0) {
+        this.gameScene.time.delayedCall(500, () => {
+          this.logic?.checkGameOver();
+        });
       }
     } else {
-      // AI adding to AI meld - no visuals needed
-      // Data is already updated in logic layer
+      // AI adding a card
+      if (meldOwner === 0) {
+        // AI adding to MY meld
+        const startPos = { x: 100 + playerIndex * 200, y: 100 };
+        const cardSprite = this.gameScene.handManager.createCardSprite(
+          card,
+          startPos.x,
+          startPos.y
+        );
+
+        if (replacedJoker) {
+          const result = this.gameScene.meldManager.handleJokerReplacement(
+            meld,
+            cardSprite,
+            card,
+            replacedJoker,
+            sortedMeldData
+          );
+          this.gameScene.showMessage(`AI replaced your Joker!`);
+        } else {
+          this.gameScene.meldManager.addCardToMeldVisual(
+            meld,
+            cardSprite,
+            card,
+            sortedMeldData
+          );
+          this.gameScene.showMessage(`AI added card to your meld!`);
+        }
+      } else {
+        const startPos = { x: 100 + playerIndex * 200, y: 100 };
+        const cardSprite = this.gameScene.handManager.createCardSprite(
+          card,
+          startPos.x,
+          startPos.y
+        );
+
+        // 2. Add to visual manager
+        this.gameScene.meldManager.addCardToMeldVisual(
+          meld,
+          cardSprite,
+          card,
+          sortedMeldData
+        );
+
+        // 3. Handle Visibility: Hide if we aren't currently viewing this opponent
+        const isThisPlayerDisplayed =
+          this.gameScene.meldManager.getDisplayedOpponentIndex() ===
+          playerIndex;
+
+        if (!isThisPlayerDisplayed) {
+          cardSprite.setVisible(false);
+        }
+      }
+
+      this.gameScene.playerIconManager.updateCardCount(playerIndex);
     }
 
-    this.gameScene.playerIconManager.updateCardCount(playerIndex);
+    this.gameScene.meldManager.refreshMeldViewIfOpen((pi) =>
+      this.getPlayerMelds(pi)
+    );
   }
-
-  this.gameScene.meldManager.refreshMeldViewIfOpen((pi) =>
-    this.getPlayerMelds(pi)
-  );
-}
 
   private onPhaseChanged(event: any): void {
     this.gameScene.setCurrentPhase(event.newPhase);
@@ -744,95 +819,96 @@ export class SinglePlayerHandler {
   }
 
   private onGameOver(event: any): void {
-  const { winner } = event;
-  const numPlayers = this.logic?.getState().numPlayers || 3;
-  const roundScores: number[] = [];
+    const { winner } = event;
+    const numPlayers = this.logic?.getState().numPlayers || 3;
+    const roundScores: number[] = [];
 
-  // Cancel any pending AI turns to prevent updates to destroyed UI
-  this.gameScene.aiManager.cancelTurn();
+    // Cancel any pending AI turns to prevent updates to destroyed UI
+    this.gameScene.aiManager.cancelTurn();
 
-  for (let i = 0; i < numPlayers; i++) {
-    let score: number;
-    if (i === winner) {
-      // WINNER: Reduce total by 40 (negative points)
-      score = -40;
-    } else {
-      // LOSERS: Calculate penalty for cards in hand
-      score = this.calculateHandPenalty(i);
+    for (let i = 0; i < numPlayers; i++) {
+      let score: number;
+      if (i === winner) {
+        // WINNER: Reduce total by 40 (negative points)
+        score = -40;
+      } else {
+        // LOSERS: Calculate penalty for cards in hand
+        score = this.calculateHandPenalty(i);
+      }
+      roundScores.push(score);
+
+      // Update GameScene with round scores
+      this.gameScene.addRoundScore(i, score);
     }
-    roundScores.push(score);
 
-    // Update GameScene with round scores
-    this.gameScene.addRoundScore(i, score);
-  }
+    // Update the handler's round tracking
+    this.currentRound++;
 
-  // Update the handler's round tracking
-  this.currentRound++;
-
-  if (this.currentRound <= this.totalRounds) {
-    // Show message about next round
-    this.gameScene.showMessage(
-      `Round ${this.currentRound - 1} complete! ${winner === 0 ? 'You won!' : `Player ${winner + 1} won!`}`,
-      2500
-    );
-
-    // Wait a moment, then start next round
-    this.gameScene.time.delayedCall(3000, () => {
-      console.log(
-        `🎮 Starting round ${this.currentRound} of ${this.totalRounds}`
+    if (this.currentRound <= this.totalRounds) {
+      // Show message about next round
+      this.gameScene.showMessage(
+        `Round ${this.currentRound - 1} complete! ${
+          winner === 0 ? "You won!" : `Player ${winner + 1} won!`
+        }`,
+        2500
       );
-      this.gameScene.setCurrentRound(this.currentRound);
 
-      // Reset logic for new round - ONLY called here after delay!
-      this.resetForNewRound();
-    });
-  } else {
-    // Game is completely over - show final results
-    this.gameScene.showMessage('Game Over!', 3000);
-    
-    const finalResults = {
-      winner,
-      totalScores: this.gameScene.getTotalScores(),
-    };
-    (this.gameScene as any).showFinalResults?.(finalResults);
+      // Wait a moment, then start next round
+      this.gameScene.time.delayedCall(3000, () => {
+        console.log(
+          `🎮 Starting round ${this.currentRound} of ${this.totalRounds}`
+        );
+        this.gameScene.setCurrentRound(this.currentRound);
+
+        // Reset logic for new round - ONLY called here after delay!
+        this.resetForNewRound();
+      });
+    } else {
+      // Game is completely over - show final results
+      this.gameScene.showMessage("Game Over!", 3000);
+
+      const finalResults = {
+        winner,
+        totalScores: this.gameScene.getTotalScores(),
+      };
+      (this.gameScene as any).showFinalResults?.(finalResults);
+    }
   }
-  
-}
 
   private resetForNewRound(): void {
     // Clear current state
     if (this.logic) {
-    // Cancel any pending AI turns first
-    this.gameScene.aiManager.cancelTurn();
-    
-    // Reinitialize game logic for new round
-    const numPlayers = this.config.numPlayers ?? 4;
-    this.logic.newGame(numPlayers);
-    
-    // Reinitialize AI manager with correct player count
-    this.gameScene.aiManager.initializeForPlayers(numPlayers, 0);
+      // Cancel any pending AI turns first
+      this.gameScene.aiManager.cancelTurn();
 
-    // Reset visual managers
-    this.gameScene.meldManager.clearAllMelds();
-    this.gameScene.handManager.clearHand();
+      // Reinitialize game logic for new round
+      const numPlayers = this.config.numPlayers ?? 4;
+      this.logic.newGame(numPlayers);
 
-    // Reset turn indicators
-    this.gameScene.setIsMyTurn(true);
-    this.gameScene.setCurrentPhase(GamePhase.DRAW);
+      // Reinitialize AI manager with correct player count
+      this.gameScene.aiManager.initializeForPlayers(numPlayers, 0);
 
-    // Recreate game elements
-    this.gameScene.createDrawPile();
-    this.gameScene.createDiscardPile();
-    this.gameScene.createFinishingCardDisplay();
+      // Reset visual managers
+      this.gameScene.meldManager.clearAllMelds();
+      this.gameScene.handManager.clearHand();
 
-    // Set initial hand
-    const hand = this.logic.getPlayerHand(0);
-    this.gameScene.handManager.setHand(hand);
-    this.gameScene.meldManager.clearAllMelds();
-    
-    this.gameScene.updatePhaseUI();
-    this.gameScene.updateMeldUI();
-  }
+      // Reset turn indicators
+      this.gameScene.setIsMyTurn(true);
+      this.gameScene.setCurrentPhase(GamePhase.DRAW);
+
+      // Recreate game elements
+      this.gameScene.createDrawPile();
+      this.gameScene.createDiscardPile();
+      this.gameScene.createFinishingCardDisplay();
+
+      // Set initial hand
+      const hand = this.logic.getPlayerHand(0);
+      this.gameScene.handManager.setHand(hand);
+      this.gameScene.meldManager.clearAllMelds();
+
+      this.gameScene.updatePhaseUI();
+      this.gameScene.updateMeldUI();
+    }
   }
 
   /**
@@ -903,11 +979,16 @@ export class SinglePlayerHandler {
     const drawnCard = this.logic.getDiscardCard();
     if (!drawnCard) return true;
 
-    const currentMelds = this.logic.getPlayerMelds(0);
-    const initialMelds = this.logic.gameStateSnapshot?.melds || [];
-    const newMelds = currentMelds.slice(initialMelds.length);
+    const numPlayers = this.logic.getState().numPlayers;
 
-    // Check if card is in any meld (new or existing)
-    return currentMelds.some((meld) => meld.some((c) => c.id === drawnCard.id));
+    for (let i = 0; i < numPlayers; i++) {
+      const melds = this.logic.getPlayerMelds(i);
+      const cardFound = melds.some((meld) => meld.some((c) => c.id === drawnCard.id));
+      if (cardFound) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }

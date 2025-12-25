@@ -2,7 +2,7 @@
 import type { Card } from "../types/card.types";
 import { isJoker, getCardPoints } from "../types/card.types";
 import type { MeldValidationResult } from "../types/game-state.types";
-import type { CardData } from '../types/card-data.types';
+import type { CardData } from "../types/card-data.types";
 
 /**
  * Pure validation functions for melds.
@@ -103,7 +103,7 @@ export class MeldValidator {
       let best = {
         cardsUsed: dp[i - 1].cardsUsed,
         meldCount: dp[i - 1].meldCount,
-        melds: [...dp[i - 1].melds]
+        melds: [...dp[i - 1].melds],
       };
 
       // Option 2: Try to end a meld at i-1
@@ -118,10 +118,13 @@ export class MeldValidator {
           isValid = true;
         } else {
           // Check for run with suit constraint
-          const nonJokers = candidate.filter(c => !isJoker(c));
+          const nonJokers = candidate.filter((c) => !isJoker(c));
           if (nonJokers.length > 0) {
             const firstSuit = nonJokers[0].suit;
-            if (nonJokers.every(c => c.suit === firstSuit) && this.isValidRun(candidate)) {
+            if (
+              nonJokers.every((c) => c.suit === firstSuit) &&
+              this.isValidRun(candidate)
+            ) {
               isValid = true;
             }
           }
@@ -132,12 +135,15 @@ export class MeldValidator {
           const candidateMeldCount = dp[j].meldCount + 1;
 
           // Prefer more cards used, then more melds
-          if (candidateCardsUsed > best.cardsUsed ||
-            (candidateCardsUsed === best.cardsUsed && candidateMeldCount > best.meldCount)) {
+          if (
+            candidateCardsUsed > best.cardsUsed ||
+            (candidateCardsUsed === best.cardsUsed &&
+              candidateMeldCount > best.meldCount)
+          ) {
             best = {
               cardsUsed: candidateCardsUsed,
               meldCount: candidateMeldCount,
-              melds: [...dp[j].melds, candidate]
+              melds: [...dp[j].melds, candidate],
             };
           }
         }
@@ -237,11 +243,11 @@ export class MeldValidator {
 
     // Determine if we should use high ace for boundary checks
     // Use committed value if set, otherwise infer from card values
-    const effectiveUseHighAce = useHighAce ?? (
+    const effectiveUseHighAce =
+      useHighAce ??
       // If no ace was involved in the middle, check if it's a high sequence
-      (firstRegular.card.value >= 11 || lastRegular.card.value >= 11) &&
-      (firstRegular.card.value === 1 || lastRegular.card.value === 1)
-    );
+      ((firstRegular.card.value >= 11 || lastRegular.card.value >= 11) &&
+        (firstRegular.card.value === 1 || lastRegular.card.value === 1));
 
     // Check leading jokers (before first regular card)
     const leadingJokers = firstRegular.index;
@@ -295,10 +301,7 @@ export class MeldValidator {
   /**
    * Get the point value of a joker within a specific meld
    */
-  static getJokerValueInMeld(
-    joker: CardData,
-    meld: CardData[]
-  ): number {
+  static getJokerValueInMeld(joker: CardData, meld: CardData[]): number {
     const regularCards = meld.filter((c) => !isJoker(c));
 
     if (regularCards.length === 0) return 0;
@@ -316,15 +319,13 @@ export class MeldValidator {
     return 0;
   }
 
-
-
   /**
    * Get the value of a joker in a run
    */
   static getJokerValueInRun(
     joker: CardData,
     meld: CardData[],
-    regularCards?: CardData[]  // Make optional
+    regularCards?: CardData[] // Make optional
   ): number {
     const regCards = regularCards || meld.filter((c) => !isJoker(c));
     if (regCards.length === 0) return 0;
@@ -440,7 +441,7 @@ export class MeldValidator {
       meld.map((card) => ({ ...card } as Card))
     );
 
-    const invalidCardsAsCards = invalidCards.map(card => card as Card);
+    const invalidCardsAsCards = invalidCards.map((card) => card as Card);
     return {
       isValid,
       error,
@@ -455,82 +456,6 @@ export class MeldValidator {
     };
   }
 
-  /**
-   * Find the best combination of melds from a set of cards
-   * This is a simplified greedy algorithm - could be improved with dynamic programming
-   */
-  static findBestMeldCombination(cards: CardData[]): CardData[][] {
-    const melds: CardData[][] = [];
-    const remainingCards = [...cards];
-
-    // First, try to find all possible sets and runs
-    const allPossibleMelds = this.findAllPossibleMelds(remainingCards);
-
-    // Sort melds by score (descending) to prioritize high-value melds
-    allPossibleMelds.sort(
-      (a, b) => this.calculateMeldScore(b) - this.calculateMeldScore(a)
-    );
-
-    // Greedily select melds
-    for (const meld of allPossibleMelds) {
-      // Check if all cards in this meld are still available
-      const canUseMeld = meld.every((card) =>
-        remainingCards.some((rc) => rc.id === card.id)
-      );
-
-      if (canUseMeld) {
-        melds.push(meld);
-
-        // Remove used cards from remaining cards
-        for (const card of meld) {
-          const index = remainingCards.findIndex((rc) => rc.id === card.id);
-          if (index !== -1) {
-            remainingCards.splice(index, 1);
-          }
-        }
-      }
-    }
-
-    return melds;
-  }
-
-  /**
-   * Find all possible valid melds from a set of cards
-   */
-  private static findAllPossibleMelds(cards: CardData[]): CardData[][] {
-    const melds: CardData[][] = [];
-
-    // Try all combinations of 3+ cards
-    for (let size = 3; size <= cards.length; size++) {
-      const combinations = this.getCombinations(cards, size);
-
-      for (const combo of combinations) {
-        if (this.isValidSet(combo) || this.isValidRun(combo)) {
-          melds.push(combo);
-        }
-      }
-    }
-
-    return melds;
-  }
-
-  /**
-   * Get all combinations of a given size from an array
-   */
-  private static getCombinations<T>(arr: T[], size: number): T[][] {
-    if (size > arr.length) return [];
-    if (size === 1) return arr.map((item) => [item]);
-
-    const result: T[][] = [];
-
-    for (let i = 0; i < arr.length - size + 1; i++) {
-      const head = arr[i];
-      const tailCombinations = this.getCombinations(arr.slice(i + 1), size - 1);
-      tailCombinations.forEach((tail) => result.push([head, ...tail]));
-    }
-
-    return result;
-  }
 
   /**
    * Check if a card can be added to an existing meld
@@ -538,10 +463,11 @@ export class MeldValidator {
   static canAddToMeld(card: CardData, meld: CardData[]): boolean {
     // Try adding to the end
 
-       const regularCards = meld.filter(c => !isJoker(c));
-    const couldBeRun = regularCards.length > 0 && 
-      regularCards.every(c => c.suit === regularCards[0].suit);
-    
+    const regularCards = meld.filter((c) => !isJoker(c));
+    const couldBeRun =
+      regularCards.length > 0 &&
+      regularCards.every((c) => c.suit === regularCards[0].suit);
+
     // Sort if it's a run to ensure proper order
     const sortedMeld = couldBeRun ? this.sortRunCards(meld) : meld;
     const testMeldEnd = [...sortedMeld, card];
@@ -704,10 +630,11 @@ export class MeldValidator {
   ): "start" | "end" | null {
     // Try adding to the end
 
-    const regularCards = meld.filter(c => !isJoker(c));
-    const couldBeRun = regularCards.length > 0 && 
-      regularCards.every(c => c.suit === regularCards[0].suit);
-    
+    const regularCards = meld.filter((c) => !isJoker(c));
+    const couldBeRun =
+      regularCards.length > 0 &&
+      regularCards.every((c) => c.suit === regularCards[0].suit);
+
     // Sort if it's a run to ensure proper order
     const sortedMeld = couldBeRun ? this.sortRunCards(meld) : meld;
     const testMeldEnd = [...sortedMeld, card];

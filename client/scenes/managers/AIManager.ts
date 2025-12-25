@@ -264,7 +264,6 @@ export class AIManager {
      * Run an AI turn for the current player
      */
     runTurn(): boolean {
-        console.log('[AIManager] runTurn called');
 
         if (!this.canRunTurn()) {
             console.log('[AIManager] Cannot run turn');
@@ -451,8 +450,6 @@ export class AIManager {
             return;
         }
 
-        console.log(`[AIManager] AI ${aiIndex} executing draw phase`);
-
         const drawSuccess = this.executeDrawPhase(aiIndex);
         if (!drawSuccess) {
             console.error(`[AIManager] AI ${aiIndex} draw failed`);
@@ -623,7 +620,6 @@ export class AIManager {
                 addition.meldOwner,
                 addition.meldIndex
             );
-            console.log(`[AIManager] AI ${aiIndex} added card to meld`);
         } catch (error) {
             console.error(`[AIManager] Error adding to meld:`, error);
         }

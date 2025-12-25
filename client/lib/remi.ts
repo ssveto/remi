@@ -761,6 +761,8 @@ export class Remi {
     // Reset discard tracking for next turn
     this.#drewFromDiscard = false;
     this.#discardCardDrawn = null;
+    this.#finishingCardDrawn = false;
+    this.gameStateSnapshot = null;
 
     this.#events.emit({
       type: GameEventType.TURN_ENDED,
@@ -781,6 +783,12 @@ export class Remi {
 
   private endGame(winner: number): void {
     this.setPhase(GamePhase.GAME_OVER);
+
+    // Reset discard tracking for next turn
+    this.#drewFromDiscard = false;
+    this.#discardCardDrawn = null;
+    this.#finishingCardDrawn = false;
+    this.gameStateSnapshot = null;
 
     // Calculate final scores (simplified)
     const scores = this.#playerHands.map((hand) =>

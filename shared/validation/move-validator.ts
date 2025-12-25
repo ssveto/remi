@@ -486,7 +486,7 @@ export class MoveValidator {
     handSize: number
   ): MoveValidationResult {
 
-    if (playerId) {
+    if (!playerId) {
       return { valid: false, error: 'Player not found', errorCode: 'PLAYER_NOT_FOUND' };
     }
     if (fromIndex < 0 || fromIndex >= handSize) {
