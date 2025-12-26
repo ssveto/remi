@@ -270,7 +270,7 @@ export class MultiplayerHandler {
   handleAddToMeld(
     card: Card,
     cardGO: CardGameObject,
-    meldOwner: string,
+    meldOwner: number,
     meldIndex: number
   ): boolean {
     const cardId = (card as any).serverId;
@@ -299,13 +299,13 @@ export class MultiplayerHandler {
       return false;
     }
 
-    // Find the meld owner's player index
-    const meldOwnerIndex = this.currentServerState!.players.findIndex(
-      (p) => p.id === meldOwner
-    );
+    // // Find the meld owner's player index
+    // const meldOwnerIndex = this.currentServerState!.players.findIndex(
+    //   (p) => p.id === meldOwner
+    // );
 
     // Get the meld visual
-    const meld = this.gameScene.meldManager.getMeld(meldOwnerIndex, meldIndex);
+    const meld = this.gameScene.meldManager.getMeld(meldOwner, meldIndex);
 
     if (!meld) {
       console.error("Meld not found");
@@ -314,7 +314,7 @@ export class MultiplayerHandler {
 
     // IMPROVED: Get meld data and check for joker replacement
     const meldData =
-      this.currentServerState!.players[meldOwnerIndex]?.melds[meldIndex];
+      this.currentServerState!.players[meldOwner]?.melds[meldIndex];
 
     if (meldData) {
       const cardData: CardData = {
@@ -341,6 +341,7 @@ export class MultiplayerHandler {
 
       // Sort meld data for proper visual display
       const sortedMeldData = this.sortMeldData(meldData);
+      const sortedMeldCards = StateSync.serverCardsToClient(sortedMeldData);
 
       // Remove card from hand
       this.gameScene.handManager.removeCard(card);
@@ -352,18 +353,21 @@ export class MultiplayerHandler {
         meld,
         cardGO,
         card,
-        sortedMeldData
+        sortedMeldCards
       );
     } else {
       // Fallback without sorting
       this.gameScene.handManager.removeCard(card);
       this.gameScene.handManager.updateHandDisplay();
       this.gameScene.handManager.updateHandDropZones();
-      this.gameScene.meldManager.addCardToMeldVisual(meld, cardGO, card);
+
+      const fallbackMeldData = [...meld.cardData, card];
+      this.gameScene.meldManager.addCardToMeldVisual(meld, cardGO, card, fallbackMeldData);
     }
 
+    const meldOwnerId = this.currentServerState!.players[meldOwner].id;
     // Send to server
-    this.networkManager.addCardToMeld(cardId, meldOwner, meldIndex);
+    this.networkManager.addCardToMeld(cardId, meldOwnerId, meldIndex);
     return true;
   }
 
@@ -413,6 +417,7 @@ export class MultiplayerHandler {
     );
 
     this.networkManager.layMelds(meldIds);
+    this.gameScene.handManager.clearSelection();
     return true;
   }
 
@@ -695,6 +700,23 @@ export class MultiplayerHandler {
     this.tookFinishingCard = false;
     this.previousHandIds = new Set();
     this.resetDrawTracking();
+
+    // ADD: Reset discard pile visual
+    if (this.gameScene.discardPileSprite) {
+      this.gameScene.discardPileSprite.setVisible(false);
+    }
+
+    // ADD: Reset finishing card visual
+    if (this.gameScene.finishingCardSprite) {
+      this.gameScene.finishingCardSprite.destroy();
+      this.gameScene.finishingCardSprite = null;
+    }
+
+    // ADD: Clear all melds
+    this.gameScene.meldManager.clearAllMelds();
+
+    // ADD: Clear hand
+    this.gameScene.handManager.clearHand();
   }
 
   private handleRoundEnded(data: RoundEndedData): void {

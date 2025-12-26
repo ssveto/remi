@@ -260,7 +260,7 @@ export class MeldManager {
       highlight.setFillStyle(0x00ff00, 0);
     });
 
-    this.scene.input.enableDebug(dropZone, 0xff0000);
+    //this.scene.input.enableDebug(dropZone, 0xff0000);
 
     return { dropZone, highlight };
   }

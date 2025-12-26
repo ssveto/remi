@@ -307,7 +307,7 @@ export class GameScene extends Phaser.Scene {
     let success = false;
 
     if (this.isMultiplayer && this.multiplayerHandler) {
-      success = this.multiplayerHandler.handleAddToMeld(card, cardGO, owner as string, idx);
+      success = this.multiplayerHandler.handleAddToMeld(card, cardGO, owner as number, idx);
     } else if (this.singlePlayerHandler) {
       success = this.singlePlayerHandler.handleAddToMeld(card, owner as number, idx);
     }
