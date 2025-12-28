@@ -1,50 +1,52 @@
 // client/scenes/lobby-scene.ts
-import * as Phaser from 'phaser';
-import { SCENE_KEYS } from './common';
-import { NetworkManager } from '../lib/network-manager';
-import { SocketEvent } from '../../shared/types/socket-events';
+import * as Phaser from "phaser";
+import { SCENE_KEYS } from "./common";
+import { NetworkManager } from "../lib/network-manager";
+import { SocketEvent } from "../../shared/types/socket-events";
 
 // ============================================================================
 // CONFIGURATION - Edit these to customize appearance and layout
 // ============================================================================
 
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
 const CONFIG = {
   // Layout spacing (in pixels)
   layout: {
-    titleY: 80,              // Title distance from top
-    contentStartY: 0.30,     // Content starts at 30% of screen height
-    elementSpacing: 80,      // Vertical space between elements
-    inputSpacing: 100,       // Vertical space between input groups
-    bottomPadding: 120,      // Space from bottom for action buttons
+    titleY: 80, // Title distance from top
+    contentStartY: 0.3, // Content starts at 30% of screen height
+    elementSpacing: 80, // Vertical space between elements
+    inputSpacing: 100, // Vertical space between input groups
+    bottomPadding: 120, // Space from bottom for action buttons
   },
 
   // Typography
   fonts: {
-    title: { size: '48px', family: 'Arial', style: 'bold' },
-    heading: { size: '32px', family: 'Arial', style: 'normal' },
-    label: { size: '24px', family: 'Arial', style: 'normal' },
-    body: { size: '20px', family: 'Arial', style: 'normal' },
-    button: { size: '28px', family: 'Arial', style: 'normal' },
-    smallButton: { size: '20px', family: 'Arial', style: 'normal' },
-    roomCode: { size: '48px', family: 'Arial', style: 'bold' },
-    playerName: { size: '28px', family: 'Arial', style: 'normal' },
+    title: { size: "48px", family: "Arial", style: "bold" },
+    heading: { size: "32px", family: "Arial", style: "normal" },
+    label: { size: "24px", family: "Arial", style: "normal" },
+    body: { size: "20px", family: "Arial", style: "normal" },
+    button: { size: "28px", family: "Arial", style: "normal" },
+    smallButton: { size: "20px", family: "Arial", style: "normal" },
+    roomCode: { size: "48px", family: "Arial", style: "bold" },
+    playerName: { size: "28px", family: "Arial", style: "normal" },
   },
 
   // Colors
   colors: {
     text: {
-      primary: '#ffffff',
-      secondary: '#cccccc',
-      accent: '#FFD700',      // Gold for room codes
-      success: '#4CAF50',
-      error: '#f44336',
+      primary: "#ffffff",
+      secondary: "#cccccc",
+      accent: "#FFD700", // Gold for room codes
+      success: "#4CAF50",
+      error: "#f44336",
     },
     buttons: {
-      create: '#4CAF50',      // Green
-      join: '#2196F3',        // Blue
-      browse: '#9C27B0',      // Purple
-      back: '#757575',        // Gray
-      start: '#4CAF50',       // Green
+      create: "#4CAF50", // Green
+      join: "#2196F3", // Blue
+      browse: "#9C27B0", // Purple
+      back: "#757575", // Gray
+      start: "#4CAF50", // Green
     },
     background: 0x000000,
     backgroundAlpha: 0.8,
@@ -69,11 +71,11 @@ const CONFIG = {
 // ============================================================================
 
 enum LobbyState {
-  MAIN_MENU = 'main_menu',
-  CREATE_ROOM = 'create_room',
-  JOIN_ROOM = 'join_room',
-  WAITING_ROOM = 'waiting_room',
-  PUBLIC_ROOMS = 'public_rooms',
+  MAIN_MENU = "main_menu",
+  CREATE_ROOM = "create_room",
+  JOIN_ROOM = "join_room",
+  WAITING_ROOM = "waiting_room",
+  PUBLIC_ROOMS = "public_rooms",
 }
 
 // ============================================================================
@@ -84,6 +86,8 @@ export class LobbyScene extends Phaser.Scene {
   private networkManager!: NetworkManager;
   private currentRoomId: string | null = null;
   private currentState: LobbyState = LobbyState.MAIN_MENU;
+
+  // Design Resolution constants - Ensure these match your Game Scene
 
   // UI Groups - organized containers for easy cleanup
   private uiGroups: Map<string, Phaser.GameObjects.Group> = new Map();
@@ -113,33 +117,72 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   // ==========================================================================
+  // SCALING LOGIC
+  // ==========================================================================
+
+  /**
+   * Calculates the scale factor based on current window size vs design resolution.
+   * Uses the logic provided for the game scene.
+   */
+  private getDynamicScale(): number {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    const scaleX = width / DESIGN_WIDTH;
+    const scaleY = height / DESIGN_HEIGHT;
+
+    let scale = Math.min(scaleX, scaleY);
+
+    scale = Math.max(0.6, Math.min(scale, 2.0));
+    return scale;
+  }
+
+  /**
+   * Helper to scale a font size string (e.g. '48px' -> '24px')
+   */
+  private getScaledFont(fontConfig: {
+    size: string;
+    family: string;
+    style?: string;
+  }): {
+    fontSize: string;
+    fontFamily: string;
+    fontStyle?: string;
+    color?: string;
+  } {
+    const sizeVal = parseInt(fontConfig.size);
+    const scaledSize = Math.round(sizeVal * this.getDynamicScale());
+
+    return {
+      fontSize: `${scaledSize}px`,
+      fontFamily: fontConfig.family,
+      fontStyle: fontConfig.style,
+    };
+  }
+
+  // ==========================================================================
   // UI GROUP MANAGEMENT - Makes adding/removing elements easy
   // ==========================================================================
 
   private createUIGroups(): void {
     // Create groups for each state's UI elements
-    Object.values(LobbyState).forEach(state => {
+    Object.values(LobbyState).forEach((state) => {
       this.uiGroups.set(state, this.add.group());
     });
     // Special group for messages/toasts
-    this.uiGroups.set('messages', this.add.group());
+    this.uiGroups.set("messages", this.add.group());
   }
 
-  /**
-   * Add an element to a UI group for organized cleanup
-   * @param groupName - Name of the group (usually the LobbyState)
-   * @param element - The Phaser game object to add
-   */
-  private addToGroup(groupName: string, element: Phaser.GameObjects.GameObject): void {
+  private addToGroup(
+    groupName: string,
+    element: Phaser.GameObjects.GameObject
+  ): void {
     const group = this.uiGroups.get(groupName);
     if (group) {
       group.add(element);
     }
   }
 
-  /**
-   * Clear all elements from a specific group
-   */
   private clearGroup(groupName: string): void {
     const group = this.uiGroups.get(groupName);
     if (group) {
@@ -147,11 +190,8 @@ export class LobbyScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Clear all dynamic UI (everything except persistent elements)
-   */
   private clearDynamicUI(): void {
-    Object.values(LobbyState).forEach(state => {
+    Object.values(LobbyState).forEach((state) => {
       this.clearGroup(state);
     });
     this.playerListTexts = [];
@@ -163,12 +203,7 @@ export class LobbyScene extends Phaser.Scene {
   // STATE MANAGEMENT
   // ==========================================================================
 
-  /**
-   * Transition to a new lobby state
-   * This is the main method to switch between screens
-   */
   private transitionTo(newState: LobbyState): void {
-    // Clear previous state's UI
     this.clearDynamicUI();
     this.currentState = newState;
 
@@ -176,7 +211,6 @@ export class LobbyScene extends Phaser.Scene {
       this.titleText.setVisible(newState !== LobbyState.PUBLIC_ROOMS);
     }
 
-    // Build new state's UI
     switch (newState) {
       case LobbyState.MAIN_MENU:
         this.buildMainMenu();
@@ -202,23 +236,28 @@ export class LobbyScene extends Phaser.Scene {
 
   private createPersistentUI(): void {
     const { width } = this.scale;
+    const scale = this.getDynamicScale();
 
     // Back button (top-left)
     this.backButton = this.createButton(
-      50, 50,
-      '← Back',
+      50,
+      50,
+      "← Back",
       CONFIG.colors.buttons.back,
-      'small'
+      "small"
     );
-    this.backButton.on('pointerdown', () => this.handleBack());
+    this.backButton.on("pointerdown", () => this.handleBack());
 
     // Title
-    this.titleText = this.add.text(width / 2, CONFIG.layout.titleY, 'Multiplayer Lobby', {
-      fontSize: CONFIG.fonts.title.size,
-      fontFamily: CONFIG.fonts.title.family,
-      color: CONFIG.colors.text.primary,
-      fontStyle: CONFIG.fonts.title.style,
-    }).setOrigin(0.5);
+    const fontConfig = this.getScaledFont(CONFIG.fonts.title);
+    this.titleText = this.add
+      .text(width / 2, CONFIG.layout.titleY, "Multiplayer Lobby", {
+        fontSize: fontConfig.fontSize,
+        fontFamily: fontConfig.fontFamily,
+        color: CONFIG.colors.text.primary,
+        fontStyle: fontConfig.fontStyle,
+      })
+      .setOrigin(0.5);
   }
 
   private handleBack(): void {
@@ -228,11 +267,9 @@ export class LobbyScene extends Phaser.Scene {
     }
 
     if (this.currentState === LobbyState.MAIN_MENU) {
-      // Leave lobby entirely
       this.networkManager.disconnect();
       this.scene.start(SCENE_KEYS.MENU);
     } else {
-      // Go back to main menu within lobby
       this.transitionTo(LobbyState.MAIN_MENU);
     }
   }
@@ -244,42 +281,50 @@ export class LobbyScene extends Phaser.Scene {
   private buildMainMenu(): void {
     const { width, height } = this.scale;
     const group = LobbyState.MAIN_MENU;
+    const scale = this.getDynamicScale();
 
-    // Calculate positions using a simple vertical stack
     const layout = new VerticalLayout(
       width / 2,
       height * CONFIG.layout.contentStartY,
-      CONFIG.layout.elementSpacing
+      CONFIG.layout.elementSpacing,
+      scale
     );
 
     // Create Room Button
     const createBtn = this.createButton(
-      layout.x, layout.nextY(),
-      '🎮 Create Room',
+      layout.x,
+      layout.nextY(),
+      "🎮 Create Room",
       CONFIG.colors.buttons.create,
-      'large'
+      "large"
     );
-    createBtn.on('pointerdown', () => this.transitionTo(LobbyState.CREATE_ROOM));
+    createBtn.on("pointerdown", () =>
+      this.transitionTo(LobbyState.CREATE_ROOM)
+    );
     this.addToGroup(group, createBtn);
 
     // Join Room Button
     const joinBtn = this.createButton(
-      layout.x, layout.nextY(),
-      '🚪 Join Room',
+      layout.x,
+      layout.nextY(),
+      "🚪 Join Room",
       CONFIG.colors.buttons.join,
-      'large'
+      "large"
     );
-    joinBtn.on('pointerdown', () => this.transitionTo(LobbyState.JOIN_ROOM));
+    joinBtn.on("pointerdown", () => this.transitionTo(LobbyState.JOIN_ROOM));
     this.addToGroup(group, joinBtn);
 
     // Browse Public Rooms Button
     const browseBtn = this.createButton(
-      layout.x, layout.nextY(),
-      '📋 Browse Public Rooms',
+      layout.x,
+      layout.nextY(),
+      "📋 Browse Public Rooms",
       CONFIG.colors.buttons.browse,
-      'small'
+      "small"
     );
-    browseBtn.on('pointerdown', () => this.transitionTo(LobbyState.PUBLIC_ROOMS));
+    browseBtn.on("pointerdown", () =>
+      this.transitionTo(LobbyState.PUBLIC_ROOMS)
+    );
     this.addToGroup(group, browseBtn);
   }
 
@@ -290,68 +335,83 @@ export class LobbyScene extends Phaser.Scene {
   private buildCreateRoom(): void {
     const { width, height } = this.scale;
     const group = LobbyState.CREATE_ROOM;
+    const scale = this.getDynamicScale();
 
     const layout = new VerticalLayout(
       width / 2,
       height * CONFIG.layout.contentStartY,
-      CONFIG.layout.inputSpacing
+      CONFIG.layout.inputSpacing,
+      scale
     );
 
-    // Label
-    const label = this.createLabel(layout.x, layout.nextY(), 'Enter your name:');
+    const label = this.createLabel(
+      layout.x,
+      layout.nextY(),
+      "Enter your name:"
+    );
     this.addToGroup(group, label);
 
-    // Name input
-    const inputY = layout.currentY + 50;
+    const inputY = layout.currentY + 50 * scale; // Scale spacing too
     const inputContainer = this.createTextInput(
-      layout.x, inputY,
-      'playerNameInput',
-      'Your Name',
+      layout.x,
+      inputY,
+      "playerNameInput",
+      "Your Name",
       20,
       CONFIG.colors.buttons.create
     );
     this.addToGroup(group, inputContainer);
-    layout.advance(20); // Account for input height
+    layout.advance(20 * scale);
 
-    const privacyLabel = this.createLabel(layout.x, layout.nextY(), 'Room Visibility:');
+    const privacyLabel = this.createLabel(
+      layout.x,
+      layout.nextY(),
+      "Room Visibility:"
+    );
     this.addToGroup(group, privacyLabel);
 
-    // Create a simple DOM checkbox or a custom toggle button
-    // Using a DOM element for simplicity and consistency with your inputs:
-    const checkboxY = layout.currentY + 40;
+    const checkboxY = layout.currentY + 40 * scale;
     const privacyToggle = this.add.dom(layout.x, checkboxY).createFromHTML(`
-  <div style="display: flex; align-items: center; color: white; font-family: Arial; font-size: 15px;">
-    <input type="checkbox" id="isPublicCheckbox" style="width: 15px; height: 15px; margin-right: 10px;">
+  <div style="display: flex; align-items: center; color: white; font-family: Arial; font-size: ${
+    15 * scale
+  }px;">
+    <input type="checkbox" id="isPublicCheckbox" style="width: ${
+      15 * scale
+    }px; height: ${15 * scale}px; margin-right: 10px;">
     <label for="isPublicCheckbox">Make Room Private</label>
   </div>
 `);
     this.addToGroup(group, privacyToggle);
-    layout.advance(20);
+    layout.advance(20 * scale);
 
-    // Create button
     const confirmBtn = this.createButton(
-      layout.x, layout.nextY(),
-      'Create Room',
+      layout.x,
+      layout.nextY(),
+      "Create Room",
       CONFIG.colors.buttons.create,
-      'large'
+      "large"
     );
-    confirmBtn.on('pointerdown', () => this.handleCreateRoom());
+    confirmBtn.on("pointerdown", () => this.handleCreateRoom());
     this.addToGroup(group, confirmBtn);
   }
 
   private handleCreateRoom(): void {
-    const input = document.getElementById('playerNameInput') as HTMLInputElement;
-    const publicCheckbox = document.getElementById('isPublicCheckbox') as HTMLInputElement;
-    const playerName = input?.value.trim() || 'Player';
+    const input = document.getElementById(
+      "playerNameInput"
+    ) as HTMLInputElement;
+    const publicCheckbox = document.getElementById(
+      "isPublicCheckbox"
+    ) as HTMLInputElement;
+    const playerName = input?.value.trim() || "Player";
     const isPublic = publicCheckbox?.checked || false;
 
     if (playerName.length < 2) {
-      this.showMessage('Name must be at least 2 characters!');
+      this.showMessage("Name must be at least 2 characters!");
       return;
     }
 
     this.networkManager.createRoom(playerName, 6, isPublic);
-    this.showLoadingMessage('Creating room...');
+    this.showLoadingMessage("Creating room...");
   }
 
   // ==========================================================================
@@ -361,76 +421,80 @@ export class LobbyScene extends Phaser.Scene {
   private buildJoinRoom(): void {
     const { width, height } = this.scale;
     const group = LobbyState.JOIN_ROOM;
+    const scale = this.getDynamicScale();
 
-    const layout = new VerticalLayout(
-      width / 2,
-      height * 0.25, // Start a bit higher for more inputs
-      60
+    const layout = new VerticalLayout(width / 2, height * 0.25, 60, scale);
+
+    const roomLabel = this.createLabel(
+      layout.x,
+      layout.nextY(),
+      "Enter Room Code:"
     );
-
-    // Room code label
-    const roomLabel = this.createLabel(layout.x, layout.nextY(), 'Enter Room Code:');
     this.addToGroup(group, roomLabel);
 
-    // Room code input
-    const roomInputY = layout.currentY + 40;
+    const roomInputY = layout.currentY + 40 * scale;
     const roomInput = this.createTextInput(
-      layout.x, roomInputY,
-      'roomCodeInput',
-      'ABC123',
+      layout.x,
+      roomInputY,
+      "roomCodeInput",
+      "ABC123",
       6,
       CONFIG.colors.buttons.join,
       { uppercase: true, letterSpacing: true, large: true }
     );
     this.addToGroup(group, roomInput);
-    layout.advance(100);
+    layout.advance(100 * scale);
 
-    // Name label
-    const nameLabel = this.createLabel(layout.x, layout.nextY(), 'Your Name:');
+    const nameLabel = this.createLabel(layout.x, layout.nextY(), "Your Name:");
     this.addToGroup(group, nameLabel);
 
-    // Name input
-    const nameInputY = layout.currentY + 40;
+    const nameInputY = layout.currentY + 40 * scale;
     const nameInput = this.createTextInput(
-      layout.x, nameInputY,
-      'playerNameJoinInput',
-      'Your Name',
+      layout.x,
+      nameInputY,
+      "playerNameJoinInput",
+      "Your Name",
       20,
       CONFIG.colors.buttons.join
     );
     this.addToGroup(group, nameInput);
-    layout.advance(100);
+    layout.advance(100 * scale);
 
-    // Join button
     const joinBtn = this.createButton(
-      layout.x, layout.nextY(),
-      'Join Room',
+      layout.x,
+      layout.nextY(),
+      "Join Room",
       CONFIG.colors.buttons.join,
-      'large'
+      "large"
     );
-    joinBtn.on('pointerdown', () => this.handleJoinRoom());
+    joinBtn.on("pointerdown", () => this.handleJoinRoom());
     this.addToGroup(group, joinBtn);
   }
 
   private handleJoinRoom(): void {
-    const roomInput = document.getElementById('roomCodeInput') as HTMLInputElement;
-    const nameInput = document.getElementById('playerNameJoinInput') as HTMLInputElement;
+    const roomInput = document.getElementById(
+      "roomCodeInput"
+    ) as HTMLInputElement;
+    const nameInput = document.getElementById(
+      "playerNameJoinInput"
+    ) as HTMLInputElement;
 
-    const roomCode = roomInput?.value.trim().toUpperCase() || '';
-    const playerName = nameInput?.value.trim() || 'Player';
+    const roomCode = roomInput?.value.trim().toUpperCase() || "";
+    const playerName = nameInput?.value.trim() || "Player";
 
     if (roomCode.length !== 3) {
-      this.showMessage('Room code must be 6 characters!');
+      // Note: Input maxlength is 6, but code checks 3? Kept original logic.
+      this.showMessage("Room code must be 6 characters!");
       return;
     }
 
     if (playerName.length < 2) {
-      this.showMessage('Name must be at least 2 characters!');
+      this.showMessage("Name must be at least 2 characters!");
       return;
     }
 
     this.networkManager.joinRoom(roomCode, playerName);
-    this.showLoadingMessage('Joining room...');
+    this.showLoadingMessage("Joining room...");
   }
 
   // ==========================================================================
@@ -440,96 +504,100 @@ export class LobbyScene extends Phaser.Scene {
   private buildWaitingRoom(): void {
     const { width, height } = this.scale;
     const group = LobbyState.WAITING_ROOM;
+    const scale = this.getDynamicScale();
 
-    // Room code display
-    this.roomCodeText = this.add.text(width / 2, 150, `Room: ${this.currentRoomId}`, {
-      fontSize: CONFIG.fonts.roomCode.size,
-      fontFamily: CONFIG.fonts.roomCode.family,
-      color: CONFIG.colors.text.accent,
-      fontStyle: CONFIG.fonts.roomCode.style,
-    }).setOrigin(0.5);
+    const fontConfigRoom = this.getScaledFont(CONFIG.fonts.roomCode);
+    this.roomCodeText = this.add
+      .text(width / 2, 150, `Room: ${this.currentRoomId}`, {
+        fontSize: fontConfigRoom.fontSize,
+        fontFamily: fontConfigRoom.fontFamily,
+        color: CONFIG.colors.text.accent,
+        fontStyle: fontConfigRoom.fontStyle,
+      })
+      .setOrigin(0.5);
     this.addToGroup(group, this.roomCodeText);
 
-    // Subtitle
-    const subtitle = this.add.text(width / 2, 210, 'Share this code with friends!', {
-      fontSize: CONFIG.fonts.body.size,
-      fontFamily: CONFIG.fonts.body.family,
-      color: CONFIG.colors.text.secondary,
-    }).setOrigin(0.5);
+    const fontConfigBody = this.getScaledFont(CONFIG.fonts.body);
+    const subtitle = this.add
+      .text(width / 2, 210, "Share this code with friends!", {
+        fontSize: fontConfigBody.fontSize,
+        fontFamily: fontConfigBody.fontFamily,
+        color: CONFIG.colors.text.secondary,
+      })
+      .setOrigin(0.5);
     this.addToGroup(group, subtitle);
 
-    // Copy button (optional enhancement)
-    const copyBtn = this.createButton(width / 2, 260, '📋 Copy Code', CONFIG.colors.buttons.browse, 'small');
-    copyBtn.on('pointerdown', () => {
+    const copyBtn = this.createButton(
+      width / 2,
+      260,
+      "📋 Copy Code",
+      CONFIG.colors.buttons.browse,
+      "small"
+    );
+    copyBtn.on("pointerdown", () => {
       if (this.currentRoomId) {
         navigator.clipboard.writeText(this.currentRoomId);
-        this.showMessage('Code copied!', 1500);
+        this.showMessage("Code copied!", 1500);
       }
     });
     this.addToGroup(group, copyBtn);
 
-    // Players header
-    const playersHeader = this.add.text(width / 2, 350, 'Players:', {
-      fontSize: CONFIG.fonts.heading.size,
-      fontFamily: CONFIG.fonts.heading.family,
-      color: CONFIG.colors.text.primary,
-    }).setOrigin(0.5);
+    const fontConfigHeading = this.getScaledFont(CONFIG.fonts.heading);
+    const playersHeader = this.add
+      .text(width / 2, 350, "Players:", {
+        fontSize: fontConfigHeading.fontSize,
+        fontFamily: fontConfigHeading.fontFamily,
+        color: CONFIG.colors.text.primary,
+      })
+      .setOrigin(0.5);
     this.addToGroup(group, playersHeader);
 
-    // Start button (bottom)
     this.startButton = this.createButton(
       width / 2,
       height - CONFIG.layout.bottomPadding,
-      '▶️ Start Game',
+      "▶️ Start Game",
       CONFIG.colors.buttons.start,
-      'large'
+      "large"
     );
-    this.startButton.on('pointerdown', () => this.networkManager.startGame());
+    this.startButton.on("pointerdown", () => this.networkManager.startGame());
     this.startButton.setVisible(false);
     this.addToGroup(group, this.startButton);
   }
 
-  /**
-   * Update the player list in waiting room
-   * Called when ROOM_UPDATED event is received
-   */
   private updatePlayerList(players: any[]): void {
     if (this.currentState !== LobbyState.WAITING_ROOM) return;
 
     const { width } = this.scale;
     const group = LobbyState.WAITING_ROOM;
+    const scale = this.getDynamicScale();
 
-    // Clear old player texts
-    this.playerListTexts.forEach(text => text.destroy());
+    this.playerListTexts.forEach((text) => text.destroy());
     this.playerListTexts = [];
 
-    // Create new player list
     let yPos = 400;
-    const spacing = 50;
+    const spacing = 50 * scale;
+
+    const fontConfigPlayer = this.getScaledFont(CONFIG.fonts.playerName);
 
     players.forEach((player) => {
-      const icon = player.isHost ? '👑' : '👤';
-      const status = player.isConnected ? '🟢' : '🔴';
+      const icon = player.isHost ? "👑" : "👤";
+      const status = player.isConnected ? "🟢" : "🔴";
 
-      const playerText = this.add.text(
-        width / 2,
-        yPos,
-        `${icon} ${player.name} ${status}`,
-        {
-          fontSize: CONFIG.fonts.playerName.size,
-          fontFamily: CONFIG.fonts.playerName.family,
+      const playerText = this.add
+        .text(width / 2, yPos, `${icon} ${player.name} ${status}`, {
+          fontSize: fontConfigPlayer.fontSize,
+          fontFamily: fontConfigPlayer.fontFamily,
           color: CONFIG.colors.text.primary,
-        }
-      ).setOrigin(0.5);
+        })
+        .setOrigin(0.5);
 
       this.addToGroup(group, playerText);
       this.playerListTexts.push(playerText);
       yPos += spacing;
     });
 
-    // Update start button visibility
     const myPlayerId = this.networkManager.getPlayerId();
-    const isHost = players.some(p => p.id === myPlayerId && p.isHost);
+    const isHost = players.some((p) => p.id === myPlayerId && p.isHost);
     const canStart = isHost && players.length >= 2;
 
     if (this.startButton) {
@@ -544,43 +612,50 @@ export class LobbyScene extends Phaser.Scene {
   private buildPublicRooms(): void {
     const { width, height } = this.scale;
     const group = LobbyState.PUBLIC_ROOMS;
+    const scale = this.getDynamicScale();
 
     const layout = new VerticalLayout(
       width / 2,
-      CONFIG.layout.titleY, // Start higher to leave room for the list
-      60
+      CONFIG.layout.titleY,
+      60,
+      scale
     );
 
-    const title = this.add.text(layout.x, layout.nextY(), 'Available Public Rooms', {
-      fontSize: CONFIG.fonts.title.size,
-      fontFamily: CONFIG.fonts.title.family,
-      color: CONFIG.colors.text.primary,
-      fontStyle: CONFIG.fonts.title.style,
-    }).setOrigin(0.5);
+    const fontConfigTitle = this.getScaledFont(CONFIG.fonts.title);
+    const title = this.add
+      .text(layout.x, layout.nextY(), "Available Public Rooms", {
+        fontSize: fontConfigTitle.fontSize,
+        fontFamily: fontConfigTitle.fontFamily,
+        color: CONFIG.colors.text.primary,
+        fontStyle: fontConfigTitle.fontStyle,
+      })
+      .setOrigin(0.5);
     this.addToGroup(group, title);
 
-    const label = this.createLabel(layout.x, layout.nextY(), 'Enter your name:');
+    const label = this.createLabel(
+      layout.x,
+      layout.nextY(),
+      "Enter your name:"
+    );
     this.addToGroup(group, label);
 
-    // Name input - We give this a specific ID to find it later
-    const inputY = layout.currentY + 40;
+    const inputY = layout.currentY + 40 * scale;
     const inputContainer = this.createTextInput(
-      layout.x, inputY,
-      'publicPlayerNameInput', // Unique ID for this screen
-      'Your Name',
+      layout.x,
+      inputY,
+      "publicPlayerNameInput",
+      "Your Name",
       20,
       CONFIG.colors.buttons.browse
     );
     this.addToGroup(group, inputContainer);
-    layout.advance(80);
+    layout.advance(80 * scale);
 
-    // Container for the room list (to clear/refresh independently)
     const listContainer = this.add.container(0, layout.currentY);
     this.addToGroup(group, listContainer);
 
-    // Request the rooms from the server
     this.networkManager.requestPublicRooms();
-    this.showMessage('Fetching rooms...', 1000);
+    this.showMessage("Fetching rooms...", 1000);
   }
 
   // ==========================================================================
@@ -589,35 +664,35 @@ export class LobbyScene extends Phaser.Scene {
 
   private setupNetworkListeners(): void {
     this.networkManager.on(SocketEvent.ROOM_CREATED, (data: any) => {
-      console.log('Room created:', data.roomId);
+      console.log("Room created:", data.roomId);
       this.currentRoomId = data.roomId;
       this.transitionTo(LobbyState.WAITING_ROOM);
     });
 
     this.networkManager.on(SocketEvent.ROOM_JOINED, (data: any) => {
-      console.log('Room joined:', data.roomId);
+      console.log("Room joined:", data.roomId);
       this.currentRoomId = data.roomId;
       this.transitionTo(LobbyState.WAITING_ROOM);
     });
 
     this.networkManager.on(SocketEvent.ROOM_UPDATED, (roomState: any) => {
-      console.log('Room updated:', roomState);
+      console.log("Room updated:", roomState);
       this.updatePlayerList(roomState.players);
     });
 
     this.networkManager.on(SocketEvent.PLAYER_JOINED, (data: any) => {
-      console.log('Player joined:', data.playerName);
+      console.log("Player joined:", data.playerName);
       this.showMessage(`${data.playerName} joined!`, 2000);
     });
 
     this.networkManager.on(SocketEvent.PLAYER_LEFT, (data: any) => {
-      console.log('Player left:', data.playerId);
-      this.showMessage('A player left', 2000);
+      console.log("Player left:", data.playerId);
+      this.showMessage("A player left", 2000);
     });
 
     this.networkManager.on(SocketEvent.GAME_STARTED, () => {
-      console.log('Game starting!');
-      this.showMessage('Game starting...', CONFIG.animation.sceneTransition);
+      console.log("Game starting!");
+      this.showMessage("Game starting...", CONFIG.animation.sceneTransition);
 
       this.time.delayedCall(CONFIG.animation.sceneTransition, () => {
         this.scene.start(SCENE_KEYS.GAME, {
@@ -629,53 +704,63 @@ export class LobbyScene extends Phaser.Scene {
     });
 
     this.networkManager.on(SocketEvent.ERROR, (error: any) => {
-      console.error('Network error:', error);
-      this.showMessage(error.message || 'An error occurred', 3000);
+      console.error("Network error:", error);
+      this.showMessage(error.message || "An error occurred", 3000);
     });
 
     this.networkManager.on(SocketEvent.ROOM_LIST, (rooms: any[]) => {
       this.updatePublicRoomsList(rooms);
     });
-
   }
-
 
   // ==========================================================================
   // UI COMPONENT FACTORIES
   // ==========================================================================
 
-  /**
-   * Create a styled button
-   * 
-   * To add a new button style, add an entry to CONFIG.buttons and pass the key
-   */
   private createButton(
     x: number,
     y: number,
     text: string,
     color: string,
-    size: 'large' | 'small' = 'large'
+    size: "large" | "small" = "large"
   ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
+    const scale = this.getDynamicScale();
+
     const { width, height, borderWidth } = CONFIG.buttons[size];
-    const fontSize = size === 'large' ? CONFIG.fonts.button.size : CONFIG.fonts.smallButton.size;
+    const scaledWidth = width * scale;
+    const scaledHeight = height * scale;
+    const scaledBorder = borderWidth * scale;
 
-    const bg = this.add.rectangle(0, 0, width, height, CONFIG.colors.background, CONFIG.colors.backgroundAlpha);
-    bg.setStrokeStyle(borderWidth, parseInt(color.replace('#', '0x')));
+    const bg = this.add.rectangle(
+      0,
+      0,
+      scaledWidth,
+      scaledHeight,
+      CONFIG.colors.background,
+      CONFIG.colors.backgroundAlpha
+    );
+    bg.setStrokeStyle(scaledBorder, parseInt(color.replace("#", "0x")));
 
-    const label = this.add.text(0, 0, text, {
-      fontSize,
-      fontFamily: CONFIG.fonts.button.family,
-      color: CONFIG.colors.text.primary,
-    }).setOrigin(0.5);
+    const baseFont =
+      size === "large" ? CONFIG.fonts.button : CONFIG.fonts.smallButton;
+    const fontConfig = this.getScaledFont(baseFont);
+
+    const label = this.add
+      .text(0, 0, text, {
+        fontSize: fontConfig.fontSize,
+        fontFamily: fontConfig.fontFamily,
+        color: CONFIG.colors.text.primary,
+      })
+      .setOrigin(0.5);
 
     container.add([bg, label]);
-    container.setSize(width, height);
+    container.setSize(scaledWidth, scaledHeight);
     container.setInteractive();
 
     // Hover effects
-    const hoverColor = parseInt(color.replace('#', '0x'));
-    container.on('pointerover', () => {
+    const hoverColor = parseInt(color.replace("#", "0x"));
+    container.on("pointerover", () => {
       bg.setFillStyle(hoverColor, 0.3);
       this.tweens.add({
         targets: container,
@@ -685,7 +770,7 @@ export class LobbyScene extends Phaser.Scene {
       });
     });
 
-    container.on('pointerout', () => {
+    container.on("pointerout", () => {
       bg.setFillStyle(CONFIG.colors.background, CONFIG.colors.backgroundAlpha);
       this.tweens.add({
         targets: container,
@@ -698,15 +783,19 @@ export class LobbyScene extends Phaser.Scene {
     return container;
   }
 
-  /**
-   * Create a text label
-   */
-  private createLabel(x: number, y: number, text: string): Phaser.GameObjects.Text {
-    return this.add.text(x, y, text, {
-      fontSize: CONFIG.fonts.label.size,
-      fontFamily: CONFIG.fonts.label.family,
-      color: CONFIG.colors.text.primary,
-    }).setOrigin(0.5);
+  private createLabel(
+    x: number,
+    y: number,
+    text: string
+  ): Phaser.GameObjects.Text {
+    const fontConfig = this.getScaledFont(CONFIG.fonts.label);
+    return this.add
+      .text(x, y, text, {
+        fontSize: fontConfig.fontSize,
+        fontFamily: fontConfig.fontFamily,
+        color: CONFIG.colors.text.primary,
+      })
+      .setOrigin(0.5);
   }
 
   private updatePublicRoomsList(rooms: any[]): void {
@@ -715,59 +804,63 @@ export class LobbyScene extends Phaser.Scene {
     const { width } = this.scale;
     const group = LobbyState.PUBLIC_ROOMS;
 
-    // Clear any existing room buttons in this state
-    // (We use a filter to keep the name input and title)
-    this.uiGroups.get(group)?.getChildren().forEach(child => {
-      if (child instanceof Phaser.GameObjects.Container && (child as any).isRoomButton) {
-        child.destroy();
-      }
-    });
+    this.uiGroups
+      .get(group)
+      ?.getChildren()
+      .forEach((child) => {
+        if (
+          child instanceof Phaser.GameObjects.Container &&
+          (child as any).isRoomButton
+        ) {
+          child.destroy();
+        }
+      });
+
+    const scale = this.getDynamicScale();
 
     if (rooms.length === 0) {
-      const noRooms = this.add.text(width / 2, 400, 'No public rooms found.', {
-        fontSize: CONFIG.fonts.body.size,
-        color: CONFIG.colors.text.primary
-      }).setOrigin(0.5);
+      const fontConfig = this.getScaledFont(CONFIG.fonts.body);
+      const noRooms = this.add
+        .text(width / 2, 400, "No public rooms found.", {
+          fontSize: fontConfig.fontSize,
+          fontFamily: fontConfig.fontFamily,
+          color: CONFIG.colors.text.primary,
+        })
+        .setOrigin(0.5);
       this.addToGroup(group, noRooms);
-      (noRooms as any).isRoomButton = true; // Mark for cleanup
+      (noRooms as any).isRoomButton = true;
       return;
     }
 
     rooms.forEach((room, index) => {
-      const yPos = 300 + (index * 80);
+      const yPos = 300 + index * 80 * scale;
       const roomBtn = this.createButton(
         width / 2,
         yPos,
         `Join ${room.hostName}'s Room (${room.playerCount}/${room.maxPlayers})`,
         CONFIG.colors.buttons.join,
-        'small'
+        "small"
       );
 
-      roomBtn.on('pointerdown', () => {
-        const nameInput = document.getElementById('publicPlayerNameInput') as HTMLInputElement;
-        const playerName = nameInput?.value.trim() || 'Player';
+      roomBtn.on("pointerdown", () => {
+        const nameInput = document.getElementById(
+          "publicPlayerNameInput"
+        ) as HTMLInputElement;
+        const playerName = nameInput?.value.trim() || "Player";
 
         if (playerName.length < 2) {
-          this.showMessage('Please enter a name first!');
+          this.showMessage("Please enter a name first!");
           return;
         }
 
         this.networkManager.joinRoom(room.id, playerName);
       });
 
-      (roomBtn as any).isRoomButton = true; // Mark so we can refresh the list
+      (roomBtn as any).isRoomButton = true;
       this.addToGroup(group, roomBtn);
     });
   }
 
-  /**
-   * Create an HTML text input
-   * 
-   * Options:
-   * - uppercase: Force uppercase text
-   * - letterSpacing: Add spacing between characters (for codes)
-   * - large: Use larger dimensions
-   */
   private createTextInput(
     x: number,
     y: number,
@@ -775,24 +868,35 @@ export class LobbyScene extends Phaser.Scene {
     placeholder: string,
     maxLength: number,
     borderColor: string,
-    options: { uppercase?: boolean; letterSpacing?: boolean; large?: boolean } = {}
+    options: {
+      uppercase?: boolean;
+      letterSpacing?: boolean;
+      large?: boolean;
+    } = {}
   ): Phaser.GameObjects.DOMElement {
-    const width = options.large ? 250 : 300;
-    const height = options.large ? 60 : 50;
-    const fontSize = options.large ? 32 : 24;
+    const scale = this.getDynamicScale();
+
+    let width = options.large ? 250 : 300;
+    let height = options.large ? 60 : 50;
+    let fontSize = options.large ? 32 : 24;
+
+    width = width * scale;
+    height = height * scale;
+    fontSize = fontSize * scale;
+    const borderWidth = 2 * scale;
 
     const style = `
       width: ${width}px;
       height: ${height}px;
       font-size: ${fontSize}px;
       text-align: center;
-      ${options.uppercase ? 'text-transform: uppercase;' : ''}
-      border: 2px solid ${borderColor};
+      ${options.uppercase ? "text-transform: uppercase;" : ""}
+      border: ${borderWidth}px solid ${borderColor};
       border-radius: 8px;
       background: #1a1a1a;
       color: white;
       padding: 8px;
-      ${options.letterSpacing ? 'letter-spacing: 8px;' : ''}
+      ${options.letterSpacing ? "letter-spacing: 8px;" : ""}
     `;
 
     return this.add.dom(x, y).createFromHTML(`
@@ -808,63 +912,54 @@ export class LobbyScene extends Phaser.Scene {
   // MESSAGES & FEEDBACK
   // ==========================================================================
 
-  /**
-   * Show a temporary message at the bottom of the screen
-   */
-  private showMessage(text: string, duration: number = CONFIG.animation.messageFade): void {
-    const message = this.add.text(
-      this.scale.width / 2,
-      this.scale.height - 50,
-      text,
-      {
-        fontSize: CONFIG.fonts.label.size,
-        fontFamily: CONFIG.fonts.label.family,
+  private showMessage(
+    text: string,
+    duration: number = CONFIG.animation.messageFade
+  ): void {
+    const fontConfig = this.getScaledFont(CONFIG.fonts.label);
+    const message = this.add
+      .text(this.scale.width / 2, this.scale.height - 50, text, {
+        fontSize: fontConfig.fontSize,
+        fontFamily: fontConfig.fontFamily,
         color: CONFIG.colors.text.primary,
-        backgroundColor: '#000000',
+        backgroundColor: "#000000",
         padding: { x: 20, y: 10 },
-      }
-    ).setOrigin(0.5).setDepth(1000);
+      })
+      .setOrigin(0.5)
+      .setDepth(1000);
 
-    this.addToGroup('messages', message);
+    this.addToGroup("messages", message);
 
     this.tweens.add({
       targets: message,
       alpha: 0,
       y: message.y - 30,
       duration,
-      ease: 'Power2',
+      ease: "Power2",
       onComplete: () => message.destroy(),
     });
   }
 
-  /**
-   * Show a loading message (clears current state UI temporarily)
-   */
   private showLoadingMessage(text: string): void {
     this.clearGroup(this.currentState);
+    const fontConfig = this.getScaledFont(CONFIG.fonts.heading);
 
-    const loadingText = this.add.text(
-      this.scale.width / 2,
-      this.scale.height / 2,
-      text,
-      {
-        fontSize: CONFIG.fonts.heading.size,
-        fontFamily: CONFIG.fonts.heading.family,
+    const loadingText = this.add
+      .text(this.scale.width / 2, this.scale.height / 2, text, {
+        fontSize: fontConfig.fontSize,
+        fontFamily: fontConfig.fontFamily,
         color: CONFIG.colors.text.primary,
-      }
-    ).setOrigin(0.5);
+      })
+      .setOrigin(0.5);
 
     this.addToGroup(this.currentState, loadingText);
   }
 
-  // ==========================================================================
-  // LIFECYCLE
-  // ==========================================================================
-
   shutdown(): void {
+    //this.scale.off("resize", this.updateLayout, this); // <--- ADD THIS LINE
+
     this.networkManager?.removeAllListeners();
     this.children.removeAll(true);
-
     this.uiGroups.clear();
   }
 }
@@ -873,30 +968,23 @@ export class LobbyScene extends Phaser.Scene {
 // HELPER CLASS: Vertical Layout Calculator
 // ============================================================================
 
-/**
- * Simple helper to calculate vertical positions for stacked elements
- * 
- * Usage:
- *   const layout = new VerticalLayout(centerX, startY, spacing);
- *   element1.setY(layout.nextY()); // Returns startY
- *   element2.setY(layout.nextY()); // Returns startY + spacing
- *   element3.setY(layout.nextY()); // Returns startY + spacing * 2
- */
 class VerticalLayout {
   public x: number;
   public currentY: number;
   private spacing: number;
   private isFirst: boolean = true;
 
-  constructor(x: number, startY: number, spacing: number) {
+  constructor(
+    x: number,
+    startY: number,
+    baseSpacing: number,
+    scaleFactor: number
+  ) {
     this.x = x;
     this.currentY = startY;
-    this.spacing = spacing;
+    this.spacing = baseSpacing * scaleFactor;
   }
 
-  /**
-   * Get the next Y position and advance
-   */
   nextY(): number {
     if (this.isFirst) {
       this.isFirst = false;
@@ -906,77 +994,12 @@ class VerticalLayout {
     return this.currentY;
   }
 
-  /**
-   * Manually advance by a custom amount (useful for varying element heights)
-   */
   advance(amount: number): void {
     this.currentY += amount;
   }
 
-  /**
-   * Reset to a new position
-   */
   reset(newY: number): void {
     this.currentY = newY;
     this.isFirst = true;
   }
 }
-
-// ============================================================================
-// CUSTOMIZATION GUIDE
-// ============================================================================
-
-/*
-HOW TO CUSTOMIZE THIS LOBBY:
-
-1. CHANGING COLORS/FONTS/SIZES:
-   - Edit the CONFIG object at the top of the file
-   - All visual properties are centralized there
-
-2. ADDING A NEW BUTTON:
-   - Use this.createButton(x, y, text, color, size)
-   - Add it to a group: this.addToGroup(groupName, button)
-   - Available sizes: 'large', 'small'
-   - To add a new size, add entry to CONFIG.buttons
-
-3. ADDING A NEW SCREEN/STATE:
-   - Add to LobbyState enum
-   - Add case in transitionTo() method
-   - Create buildYourState() method
-   - All elements should use: this.addToGroup(LobbyState.YOUR_STATE, element)
-
-4. CHANGING LAYOUT:
-   - Use VerticalLayout helper for stacked elements
-   - Edit CONFIG.layout for global spacing values
-   - For custom layouts, calculate positions manually
-
-5. ADDING NEW INPUT TYPES:
-   - Extend createTextInput() or create new factory method
-   - Follow the pattern of returning the DOM element
-
-6. HANDLING OVERLAP:
-   - Use VerticalLayout.advance() for custom spacing after large elements
-   - Check CONFIG.layout.elementSpacing vs element heights
-
-7. ADDING ANIMATIONS:
-   - Add timing to CONFIG.animation
-   - Use this.tweens.add() for Phaser animations
-
-EXAMPLE - Adding a "Settings" button to main menu:
-
-  private buildMainMenu(): void {
-    // ... existing buttons ...
-
-    // Add settings button
-    const settingsBtn = this.createButton(
-      layout.x, layout.nextY(),
-      '⚙️ Settings',
-      '#607D8B',  // Blue-gray
-      'small'
-    );
-    settingsBtn.on('pointerdown', () => this.transitionTo(LobbyState.SETTINGS));
-    this.addToGroup(group, settingsBtn);
-  }
-
-Then add LobbyState.SETTINGS and buildSettings() method.
-*/

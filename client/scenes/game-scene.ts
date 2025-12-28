@@ -6,14 +6,21 @@
 //
 // GameScene is now ~350 lines - just initialization, UI, and coordination
 
-import * as Phaser from 'phaser';
-import { Card } from '../lib/card';
-import { GamePhase } from '../lib/game-event';
-import { NetworkManager } from '../lib/network-manager';
-import { SCENE_KEYS, COLORS, DEPTHS, CARD_WIDTH, CARD_HEIGHT, ASSET_KEYS } from './common';
-import { UIHelpers } from '../lib/ui-helpers';
-import { AIDifficulty } from '../lib/ai-player';
-import { CardData } from '../../shared/types/socket-events';
+import * as Phaser from "phaser";
+import { Card } from "../lib/card";
+import { GamePhase } from "../lib/game-event";
+import { NetworkManager } from "../lib/network-manager";
+import {
+  SCENE_KEYS,
+  COLORS,
+  DEPTHS,
+  CARD_WIDTH,
+  CARD_HEIGHT,
+  ASSET_KEYS,
+} from "./common";
+import { UIHelpers } from "../lib/ui-helpers";
+import { AIDifficulty } from "../lib/ai-player";
+import { CardData } from "../../shared/types/socket-events";
 // Import managers
 import {
   HandManager,
@@ -23,29 +30,25 @@ import {
   AIManager,
   CardGameObject,
   PlayerDisplayInfo,
-} from './managers';
+} from "./managers";
 
 // Import handlers
-import {
-  SinglePlayerHandler,
-  MultiplayerHandler,
-} from './handlers';
+import { SinglePlayerHandler, MultiplayerHandler } from "./handlers";
 
-import { GameSceneInterface } from './handlers';
+import { GameSceneInterface } from "./handlers";
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const SCALE = 1;
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
 
 const LAYOUT = {
-  DISCARD_PILE: { x: 780, y: 340 },
-  DRAW_PILE: { x: 490, y: 340 },
-  FINISHING_CARD: { x: 640, y: 320 },
+  DISCARD_PILE: { x: 0.6, y: 0.5 },
+  DRAW_PILE: { x: 0.4, y: 0.5 },
+  FINISHING_CARD: { x: 0.5, y: 0.48 },
 } as const;
-
-
 
 // =============================================================================
 // GAME SCENE - LEAN COORDINATOR
@@ -59,13 +62,12 @@ export class GameScene extends Phaser.Scene {
   private networkManager: NetworkManager | null = null;
   private myPlayerId: string | null = null;
 
-
   // Single player configuration
-  private numPlayers: number = 4;  // Default value
-  private numRounds: number = 10;   // Default value
-  private currentRound: number = 1;        // Add this
-  private totalScores: Map<number | string, number> = new Map();  // Track scores across rounds
-  private aiDifficulty: AIDifficulty = AIDifficulty.EXPERT;  // Default value
+  private numPlayers: number = 4; // Default value
+  private numRounds: number = 10; // Default value
+  private currentRound: number = 1; // Add this
+  private totalScores: Map<number | string, number> = new Map(); // Track scores across rounds
+  private aiDifficulty: AIDifficulty = AIDifficulty.EXPERT; // Default value
 
   // -------------------------------------------------------------------------
   // Managers
@@ -87,6 +89,7 @@ export class GameScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
   private drawPileSprites: Phaser.GameObjects.Image[] = [];
   public discardPileSprite: Phaser.GameObjects.Image | null = null;
+  public discardPileRectangle: Phaser.GameObjects.Rectangle | null = null;
   public finishingCardSprite: Phaser.GameObjects.Image | null = null;
   private drawZone: Phaser.GameObjects.Zone | null = null;
 
@@ -157,28 +160,35 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.createScoreDisplay();
-  }
 
+    this.updateLayout(this.scale);
+
+    // Listen for resize events
+    this.scale.on("resize", this.updateLayout, this);
+  }
 
   shutdown(): void {
-    this.singlePlayerHandler?.destroy();
-    this.multiplayerHandler?.destroy();
+  // Remove resize listener
+  this.scale.off('resize', this.updateLayout, this);
 
-    this.singlePlayerHandler = null;
-    this.multiplayerHandler = null;
+  this.singlePlayerHandler?.destroy();
+  this.multiplayerHandler?.destroy();
 
-    this.handManager.destroy();
-    this.meldManager.destroy();
-    this.playerIconManager.destroy();
-    this.dragDropManager.destroy();
-    this.aiManager.destroy();
+  this.singlePlayerHandler = null;
+  this.multiplayerHandler = null;
 
-    this.undoDialog?.destroy();
-    this.scoreDisplay?.destroy();
+  this.handManager.destroy();
+  this.meldManager.destroy();
+  this.playerIconManager.destroy();
+  this.dragDropManager.destroy();
+  this.aiManager.destroy();
 
-    this.isMyTurn = false;
-    this.currentPhase = GamePhase.DRAW;
-  }
+  this.undoDialog?.destroy();
+  this.scoreDisplay?.destroy();
+
+  this.isMyTurn = false;
+  this.currentPhase = GamePhase.DRAW;
+}
 
   // ==========================================================================
   // STATE SETTERS (for handlers)
@@ -192,7 +202,6 @@ export class GameScene extends Phaser.Scene {
     this.currentPhase = phase;
   }
 
-
   // ==========================================================================
   // MANAGER INITIALIZATION
   // ==========================================================================
@@ -200,18 +209,24 @@ export class GameScene extends Phaser.Scene {
   private initializeManagers(): void {
     this.handManager = new HandManager(this, {
       isMultiplayer: () => this.isMultiplayer,
-      getCardId: (card) => this.isMultiplayer ? (card as any).serverId || card.id : card.id,
+      getCardId: (card) =>
+        this.isMultiplayer ? (card as any).serverId || card.id : card.id,
       hasPlayerOpened: () => this.getHandler()?.hasPlayerOpened(0) ?? false,
-      onSelectionChanged: () => { this.updateMeldUI(); },
+      onSelectionChanged: () => {
+        this.updateMeldUI();
+      },
     });
 
     this.meldManager = new MeldManager(this, {
       isMultiplayer: () => this.isMultiplayer,
-      getMyPlayerIndex: () => this.isMultiplayer
-        ? this.multiplayerHandler?.getMyPlayerIndex() ?? 0
-        : 0,
+      getMyPlayerIndex: () =>
+        this.isMultiplayer
+          ? this.multiplayerHandler?.getMyPlayerIndex() ?? 0
+          : 0,
       getOpponentIndex: (idx) => {
-        const myIdx = this.isMultiplayer ? this.multiplayerHandler?.getMyPlayerIndex() ?? 0 : 0;
+        const myIdx = this.isMultiplayer
+          ? this.multiplayerHandler?.getMyPlayerIndex() ?? 0
+          : 0;
         return idx < myIdx ? idx : idx - 1;
       },
       showMessage: (text) => this.showMessage(text),
@@ -231,21 +246,26 @@ export class GameScene extends Phaser.Scene {
       onCardDeselect: (cardGO) => this.handManager.deselectCard(cardGO),
       onHandReorder: (from, to) => this.handleHandReorder(from, to),
       onDiscardDrop: (card, cardGO) => this.handleDiscardDrop(card, cardGO),
-      onMeldDrop: (card, cardGO, owner, idx) => this.handleMeldDrop(card, cardGO, owner, idx),
+      onMeldDrop: (card, cardGO, owner, idx) =>
+        this.handleMeldDrop(card, cardGO, owner, idx),
       showMessage: (text) => this.showMessage(text),
       updateHandDisplay: () => this.handManager.updateHandDisplay(),
     });
     this.dragDropManager.setup();
 
-    this.aiManager = new AIManager(this, {
-      getLogic: () => this.singlePlayerHandler?.getLogic() ?? null,
-      showMessage: (text) => this.showMessage(text),
-      updatePlayerIcons: () => this.playerIconManager.updateAll(),
-      onOpponentOpened: (idx) => {
-        const melds = this.singlePlayerHandler?.getPlayerMelds(idx) ?? [];
-        this.meldManager.showOpponentMelds(idx, melds);
+    this.aiManager = new AIManager(
+      this,
+      {
+        getLogic: () => this.singlePlayerHandler?.getLogic() ?? null,
+        showMessage: (text) => this.showMessage(text),
+        updatePlayerIcons: () => this.playerIconManager.updateAll(),
+        onOpponentOpened: (idx) => {
+          const melds = this.singlePlayerHandler?.getPlayerMelds(idx) ?? [];
+          this.meldManager.showOpponentMelds(idx, melds);
+        },
       },
-    }, { difficulty: AIDifficulty.EXPERT });
+      { difficulty: AIDifficulty.EXPERT }
+    );
   }
 
   // ==========================================================================
@@ -255,8 +275,8 @@ export class GameScene extends Phaser.Scene {
   private setupSinglePlayerMode(): void {
     this.singlePlayerHandler = new SinglePlayerHandler(this, {
       numPlayers: this.numPlayers,
-      numRounds: this.numRounds,        // Add this
-      aiDifficulty: this.aiDifficulty,   // Add this
+      numRounds: this.numRounds, // Add this
+      aiDifficulty: this.aiDifficulty, // Add this
       layout: LAYOUT,
     });
     this.singlePlayerHandler.setup();
@@ -264,7 +284,7 @@ export class GameScene extends Phaser.Scene {
 
   private setupMultiplayerMode(): void {
     if (!this.networkManager || !this.myPlayerId) {
-      console.error('Missing network configuration');
+      console.error("Missing network configuration");
       return;
     }
 
@@ -277,12 +297,115 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getHandler(): SinglePlayerHandler | MultiplayerHandler | null {
-    return this.isMultiplayer ? this.multiplayerHandler : this.singlePlayerHandler;
+    return this.isMultiplayer
+      ? this.multiplayerHandler
+      : this.singlePlayerHandler;
   }
 
   // ==========================================================================
   // DRAG/DROP CALLBACKS
   // ==========================================================================
+
+  private getDynamicScale(): number {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    // Calculate how much the width differs from design
+    const scaleX = width / DESIGN_WIDTH;
+    // Calculate how much the height differs from design
+    const scaleY = height / DESIGN_HEIGHT;
+
+    // Pick the smaller scale.
+    // If screen is narrow (portrait), scale by width.
+    // If screen is short (landscape monitor), scale by height.
+    // This ensures no content goes off-screen.
+    let scale = Math.min(scaleX, scaleY);
+
+    scale = scale / 3;
+
+    // Clamp scale: Don't let cards get microscopic (< 40%) or gigantic (> 150%)
+    scale = Math.max(0.4, Math.min(scale, 1.5));
+
+    return scale;
+  }
+
+  private updateLayout(gameSize: Phaser.Structs.Size | Phaser.Scale.ScaleManager) {
+    const width = gameSize.width;
+    const height = gameSize.height;
+
+    // A. Update Draw Pile & Draw Zone
+    if (this.drawPileSprites) {
+      this.drawPileSprites.forEach((sprite, i) => {
+        sprite.setPosition(
+          width * LAYOUT.DRAW_PILE.x + i * 2,
+          height * LAYOUT.DRAW_PILE.y
+        );
+        sprite.setScale(this.getDynamicScale() * 0.9);
+      });
+    }
+    if (this.drawZone) {
+      this.drawZone.setPosition(
+        width * LAYOUT.DRAW_PILE.x,
+        height * LAYOUT.DRAW_PILE.y
+      );
+      this.drawZone.setScale(this.getDynamicScale());
+    }
+
+    // B. Update Discard Pile (if applicable)
+    if (this.discardPileSprite) {
+      this.discardPileSprite.setPosition(
+        width * LAYOUT.DISCARD_PILE.x,
+        height * LAYOUT.DISCARD_PILE.y
+      );
+      this.discardPileSprite.setScale(this.getDynamicScale() * 0.9);
+    }
+
+    if (this.discardPileRectangle) {
+      this.discardPileRectangle.setPosition(
+        width * LAYOUT.DISCARD_PILE.x,
+        height * LAYOUT.DISCARD_PILE.y
+      );
+      // Update the size (width, height) separately
+      this.discardPileRectangle.setSize(
+        CARD_WIDTH * this.getDynamicScale() * 0.9,
+        CARD_HEIGHT * this.getDynamicScale() * 0.9
+      );
+    }
+
+    // 2b. Update Discard Drop Zone (We need to create a helper in DragDropManager)
+    this.dragDropManager.moveDiscardDropZone(
+      width * LAYOUT.DISCARD_PILE.x,
+      height * LAYOUT.DISCARD_PILE.y
+    );
+
+    // 3. Update Finishing Card
+    if (this.finishingCardSprite) {
+      this.finishingCardSprite.setPosition(
+        width * LAYOUT.FINISHING_CARD.x,
+        height * LAYOUT.FINISHING_CARD.y
+      );
+      this.finishingCardSprite.setScale(this.getDynamicScale() * 0.9);
+    }
+
+    if (this.phaseText) {
+      this.phaseText.setPosition(width / 2, height / 2 - 140);
+    }
+
+    if (this.turnIndicator) {
+      this.turnIndicator.setPosition(width / 2, height / 2 - 115);
+    }
+
+    // 4. Update Player Hand (HandManager handles internal logic)
+    this.handManager.handleResize();
+    this.meldManager.updateLayout();
+
+    // 6. Update Player Icons
+    this.playerIconManager.updateLayout();
+
+    // 8. Update Containers
+    if (this.meldButton) this.meldButton.setPosition(width / 2, height - 200);
+    if (this.scoreDisplay) this.scoreDisplay.setPosition(20, 150);
+  }
 
   private handleHandReorder(from: number, to: number): void {
     this.singlePlayerHandler?.handleReorderHand(from, to);
@@ -303,13 +426,27 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleMeldDrop(card: Card, cardGO: CardGameObject, owner: number | string, idx: number): void {
+  private handleMeldDrop(
+    card: Card,
+    cardGO: CardGameObject,
+    owner: number | string,
+    idx: number
+  ): void {
     let success = false;
 
     if (this.isMultiplayer && this.multiplayerHandler) {
-      success = this.multiplayerHandler.handleAddToMeld(card, cardGO, owner as number, idx);
+      success = this.multiplayerHandler.handleAddToMeld(
+        card,
+        cardGO,
+        owner as number,
+        idx
+      );
     } else if (this.singlePlayerHandler) {
-      success = this.singlePlayerHandler.handleAddToMeld(card, owner as number, idx);
+      success = this.singlePlayerHandler.handleAddToMeld(
+        card,
+        owner as number,
+        idx
+      );
     }
 
     if (!success) {
@@ -323,7 +460,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleDrawPileClick(): void {
     if (!this.isMyTurn || this.currentPhase !== GamePhase.DRAW) {
-      this.showMessage('Cannot draw now');
+      this.showMessage("Cannot draw now");
       return;
     }
 
@@ -336,7 +473,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleDiscardPileClick(): void {
     if (!this.isMyTurn || this.currentPhase !== GamePhase.DRAW) {
-      this.showMessage('Cannot draw from discard now');
+      this.showMessage("Cannot draw from discard now");
       return;
     }
 
@@ -360,7 +497,7 @@ export class GameScene extends Phaser.Scene {
   private handleLayMelds(): void {
     const selectedCards = this.handManager.getSelectedCardsInOrder();
     if (selectedCards.length < 3) {
-      this.showMessage('Select at least 3 cards');
+      this.showMessage("Select at least 3 cards");
       return;
     }
 
@@ -382,9 +519,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const getMelds = () => this.isMultiplayer
-      ? this.multiplayerHandler?.getPlayerMelds(playerIndex) ?? []
-      : this.singlePlayerHandler?.getPlayerMelds(playerIndex) ?? [];
+    const getMelds = () =>
+      this.isMultiplayer
+        ? this.multiplayerHandler?.getPlayerMelds(playerIndex) ?? []
+        : this.singlePlayerHandler?.getPlayerMelds(playerIndex) ?? [];
 
     this.meldManager.togglePlayerMelds(playerIndex, getMelds);
   }
@@ -396,38 +534,73 @@ export class GameScene extends Phaser.Scene {
   private createUI(): void {
     const { width, height } = this.scale;
 
-    this.phaseText = this.add.text(width / 2, height / 2 - 140, '', {
-      fontSize: '18px', fontFamily: 'Arial', color: '#ffffff',
-    }).setOrigin(0.5).setDepth(DEPTHS.UI);
+    this.phaseText = this.add
+      .text(width / 2, height / 2 - 140, "", {
+        fontSize: "18px",
+        fontFamily: "Arial",
+        color: "#ffffff",
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTHS.UI);
 
-    this.turnIndicator = this.add.text(width / 2, height / 2 - 115, '', {
-      fontSize: '18px', fontFamily: 'Arial', color: '#4CAF50', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(DEPTHS.UI);
+    this.turnIndicator = this.add
+      .text(width / 2, height / 2 - 115, "", {
+        fontSize: "18px",
+        fontFamily: "Arial",
+        color: "#4CAF50",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTHS.UI);
 
-    this.meldScoreText = this.add.text(60, 50, '0', {
-      fontSize: '32px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(DEPTHS.UI);
+    this.meldScoreText = this.add
+      .text(60, 50, "0", {
+        fontSize: "32px",
+        fontFamily: "Arial",
+        color: "#ffffff",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTHS.UI);
 
     this.meldButton = this.createMeldButton();
     this.meldButton.setVisible(false);
 
-    const backBtn = UIHelpers.createButton(this, 60, 100, '← Menu', COLORS.PRIMARY, 100, 40);
+    const backBtn = UIHelpers.createButton(
+      this,
+      60,
+      100,
+      "← Menu",
+      COLORS.PRIMARY,
+      100,
+      40
+    );
     backBtn.setDepth(DEPTHS.UI);
-    backBtn.on('pointerdown', () => this.handleBackToMenu());
+    backBtn.on("pointerdown", () => this.handleBackToMenu());
   }
 
   private createMeldButton(): Phaser.GameObjects.Container {
     const { width, height } = this.scale;
-    const bg = this.add.rectangle(0, 0, 180, 50, COLORS.SUCCESS).setStrokeStyle(3, 0xffffff);
-    const text = this.add.text(0, 0, '📋 Lay Melds', {
-      fontSize: '20px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5);
+    const bg = this.add
+      .rectangle(0, 0, 180, 50, COLORS.SUCCESS)
+      .setStrokeStyle(3, 0xffffff);
+    const text = this.add
+      .text(0, 0, "📋 Lay Melds", {
+        fontSize: "20px",
+        fontFamily: "Arial",
+        color: "#ffffff",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
 
     const container = this.add.container(width / 2, height - 200, [bg, text]);
-    container.setSize(200, 60).setInteractive({ useHandCursor: true }).setDepth(DEPTHS.UI);
-    container.on('pointerover', () => bg.setFillStyle(0x66BB6A));
-    container.on('pointerout', () => bg.setFillStyle(COLORS.SUCCESS));
-    container.on('pointerdown', () => this.handleLayMelds());
+    container
+      .setSize(200, 60)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(DEPTHS.UI);
+    container.on("pointerover", () => bg.setFillStyle(0x66bb6a));
+    container.on("pointerout", () => bg.setFillStyle(COLORS.SUCCESS));
+    container.on("pointerdown", () => this.handleLayMelds());
 
     return container;
   }
@@ -439,37 +612,46 @@ export class GameScene extends Phaser.Scene {
     this.scoreDisplay = this.add.container(20, 150);
 
     // Title
-    this.roundTitleText = this.add.text(0, 0, `Round ${this.currentRound}/${this.numRounds}`, {
-      fontSize: '20px',
-      fontFamily: 'Arial',
-      color: '#FFC107',
-      fontStyle: 'bold'
-    }).setOrigin(0, 0);
+    this.roundTitleText = this.add
+      .text(0, 0, `Round ${this.currentRound}/${this.numRounds}`, {
+        fontSize: "20px",
+        fontFamily: "Arial",
+        color: "#FFC107",
+        fontStyle: "bold",
+      })
+      .setOrigin(0, 0);
 
-    this.standingsTitleText = this.add.text(0, 35, 'STANDINGS ▼', {
-      fontSize: '20px',
-      fontFamily: 'Arial',
-      color: '#4CAF50',
-      fontStyle: 'bold'
-    }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+    this.standingsTitleText = this.add
+      .text(0, 35, "STANDINGS ▼", {
+        fontSize: "20px",
+        fontFamily: "Arial",
+        color: "#4CAF50",
+        fontStyle: "bold",
+      })
+      .setOrigin(0, 0)
+      .setInteractive({ useHandCursor: true });
 
     this.standingsListContainer = this.add.container(0, 75);
     this.standingsListContainer.setVisible(false); // Hidden by default
 
-    this.scoreDisplay.add([this.roundTitleText, this.standingsTitleText, this.standingsListContainer]);
+    this.scoreDisplay.add([
+      this.roundTitleText,
+      this.standingsTitleText,
+      this.standingsListContainer,
+    ]);
     this.scoreDisplay.setDepth(DEPTHS.UI);
 
-
-    this.standingsTitleText.on('pointerdown', () => {
+    this.standingsTitleText.on("pointerdown", () => {
       this.scoreDisplayShown = !this.scoreDisplayShown;
       if (this.standingsListContainer === null) return;
       this.standingsListContainer.setVisible(this.scoreDisplayShown);
 
       if (this.standingsTitleText === null) return;
-      this.standingsTitleText.setText(this.scoreDisplayShown ? 'STANDINGS ▲' : 'STANDINGS ▼');
+      this.standingsTitleText.setText(
+        this.scoreDisplayShown ? "STANDINGS ▲" : "STANDINGS ▼"
+      );
       this.updateScoreDisplay();
-
-    })
+    });
   }
 
   public updateScoreDisplay(): void {
@@ -488,18 +670,32 @@ export class GameScene extends Phaser.Scene {
     standings.forEach((player, index) => {
       const yPos = index * 40;
       const place = index + 1;
-      const crown = place === 1 ? '👑 ' : '';
-      const medal = place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : `${place}.`;
+      const crown = place === 1 ? "👑 " : "";
+      const medal =
+        place === 1
+          ? "🥇"
+          : place === 2
+          ? "🥈"
+          : place === 3
+          ? "🥉"
+          : `${place}.`;
 
-      const scoreText = this.add.text(0, yPos,
-        `${crown}${medal} ${player.name}: ${player.totalScore} pts`,
-        {
-          fontSize: '18px',
-          fontFamily: 'Arial',
-          color: player.isMe ? '#4CAF50' :
-            player.isCurrentPlayer ? '#FFC107' : '#FFFFFF'
-        }
-      ).setOrigin(0, 0);
+      const scoreText = this.add
+        .text(
+          0,
+          yPos,
+          `${crown}${medal} ${player.name}: ${player.totalScore} pts`,
+          {
+            fontSize: "18px",
+            fontFamily: "Arial",
+            color: player.isMe
+              ? "#4CAF50"
+              : player.isCurrentPlayer
+              ? "#FFC107"
+              : "#FFFFFF",
+          }
+        )
+        .setOrigin(0, 0);
 
       this.standingsListContainer!.add(scoreText);
     });
@@ -514,13 +710,12 @@ export class GameScene extends Phaser.Scene {
   }> {
     const players = this.getPlayersDisplayInfo();
 
-
-    const standings = players.map(player => ({
+    const standings = players.map((player) => ({
       id: player.id,
       name: player.name,
       totalScore: this.totalScores.get(player.id) || 0,
       isMe: player.isMe,
-      isCurrentPlayer: player.isCurrentPlayer
+      isCurrentPlayer: player.isCurrentPlayer,
     }));
 
     return standings.sort((a, b) => a.totalScore - b.totalScore);
@@ -535,58 +730,107 @@ export class GameScene extends Phaser.Scene {
   // ==========================================================================
 
   createDrawPile(): void {
+    const { width, height } = this.scale;
+
     this.drawPileSprites = [];
     for (let i = 0; i < 3; i++) {
-      const sprite = this.add.image(
-        LAYOUT.DRAW_PILE.x + i * 3, LAYOUT.DRAW_PILE.y, ASSET_KEYS.CARDS, 54
-      ).setScale(SCALE).setDepth(DEPTHS.CARDS + i);
+      const sprite = this.add
+        .image(
+          width * LAYOUT.DRAW_PILE.x + i * 3,
+          height * LAYOUT.DRAW_PILE.y,
+          ASSET_KEYS.CARDS,
+          54
+        )
+        .setScale(this.getDynamicScale())
+        .setDepth(DEPTHS.CARDS + i)
+        .setOrigin(0.5, 0.5);
       this.drawPileSprites.push(sprite);
     }
 
-    this.drawZone = this.add.zone(
-      LAYOUT.DRAW_PILE.x, LAYOUT.DRAW_PILE.y, CARD_WIDTH * SCALE + 20, CARD_HEIGHT * SCALE + 20
-    ).setInteractive({ useHandCursor: true });
-    this.drawZone.on('pointerdown', () => this.handleDrawPileClick());
+    this.drawZone = this.add
+      .zone(
+        width * LAYOUT.DRAW_PILE.x,
+        height * LAYOUT.DRAW_PILE.y,
+        CARD_WIDTH * this.getDynamicScale() + 20,
+        CARD_HEIGHT * this.getDynamicScale() + 20
+      )
+      .setInteractive({ useHandCursor: true })
+      .setOrigin(0.5, 0.5);
+    this.drawZone.on("pointerdown", () => this.handleDrawPileClick());
   }
 
   createDiscardPile(): void {
-    this.add.rectangle(
-      LAYOUT.DISCARD_PILE.x, LAYOUT.DISCARD_PILE.y,
-      CARD_WIDTH * SCALE, CARD_HEIGHT * SCALE, 0x333333, 0.3
-    ).setStrokeStyle(2, 0x666666).setDepth(DEPTHS.CARDS - 1);
+    const { width, height } = this.scale;
+    this.discardPileRectangle = this.add
+      .rectangle(
+        width * LAYOUT.DISCARD_PILE.x,
+        height * LAYOUT.DISCARD_PILE.y,
+        CARD_WIDTH * this.getDynamicScale(),
+        CARD_HEIGHT * this.getDynamicScale(),
+        0x333333,
+        0.3
+      )
+      .setStrokeStyle(2, 0x666666)
+      .setDepth(DEPTHS.CARDS - 1);
 
-    this.discardPileSprite = this.add.image(
-      LAYOUT.DISCARD_PILE.x, LAYOUT.DISCARD_PILE.y, ASSET_KEYS.CARDS, 0
-    ).setScale(SCALE).setDepth(DEPTHS.CARDS).setVisible(false);
+    this.discardPileSprite = this.add
+      .image(
+        width * LAYOUT.DISCARD_PILE.x,
+        height * LAYOUT.DISCARD_PILE.y,
+        ASSET_KEYS.CARDS,
+        0
+      )
+      .setScale(this.getDynamicScale())
+      .setDepth(DEPTHS.CARDS)
+      .setVisible(false)
+      .setOrigin(0.5, 0.5);
 
     this.discardPileSprite.setInteractive({ useHandCursor: true });
-    this.discardPileSprite.on('pointerdown', () => this.handleDiscardPileClick());
+    this.discardPileSprite.on("pointerdown", () =>
+      this.handleDiscardPileClick()
+    );
   }
 
   createFinishingCardDisplay(): void {
+    const { width, height } = this.scale;
     const logic = this.singlePlayerHandler?.getLogic();
     if (!logic) return;
 
     const card = logic.getFinishingCard();
     if (!card) return;
 
-    this.finishingCardSprite = this.add.image(
-      LAYOUT.FINISHING_CARD.x, LAYOUT.FINISHING_CARD.y,
-      ASSET_KEYS.CARDS, this.handManager.getCardFrame(card)
-    ).setScale(SCALE * 0.9).setDepth(DEPTHS.CARDS);
+    this.finishingCardSprite = this.add
+      .image(
+        width * LAYOUT.FINISHING_CARD.x,
+        height * LAYOUT.FINISHING_CARD.y,
+        ASSET_KEYS.CARDS,
+        this.handManager.getCardFrame(card)
+      )
+      .setScale(this.getDynamicScale() * 0.9)
+      .setDepth(DEPTHS.CARDS);
 
     this.finishingCardSprite.setInteractive({ useHandCursor: true });
-    this.finishingCardSprite.on('pointerdown', () => this.handleFinishingCardClick());
+    this.finishingCardSprite.on("pointerdown", () =>
+      this.handleFinishingCardClick()
+    );
   }
 
   createFinishingCardFromServer(card: CardData): void {
-    this.finishingCardSprite = this.add.image(
-      LAYOUT.FINISHING_CARD.x, LAYOUT.FINISHING_CARD.y,
-      ASSET_KEYS.CARDS, this.handManager.getCardFrame(card as any)
-    ).setScale(SCALE * 0.9).setDepth(DEPTHS.CARDS);
+    const { width, height } = this.scale;
+    this.finishingCardSprite = this.add
+      .image(
+        width * LAYOUT.FINISHING_CARD.x,
+        height * LAYOUT.FINISHING_CARD.y,
+        ASSET_KEYS.CARDS,
+        this.handManager.getCardFrame(card as any)
+      )
+      .setScale(this.getDynamicScale() * 0.9)
+      .setDepth(DEPTHS.CARDS);
 
     this.finishingCardSprite.setInteractive({ useHandCursor: true });
-    this.finishingCardSprite.on('pointerdown', () => this.handleFinishingCardClick());
+    this.finishingCardSprite.on("pointerdown", () =>
+      this.handleFinishingCardClick()
+    );
   }
 
   // ==========================================================================
@@ -595,15 +839,15 @@ export class GameScene extends Phaser.Scene {
 
   updatePhaseUI(): void {
     const phaseNames: Record<GamePhase, string> = {
-      [GamePhase.DRAW]: 'VUCI KARTU',
-      [GamePhase.MELD]: 'IGRAJ',
-      [GamePhase.DISCARD]: 'IZBACI KARTU',
-      [GamePhase.GAME_OVER]: 'IGRA ZAVRSENA',
+      [GamePhase.DRAW]: "VUCI KARTU",
+      [GamePhase.MELD]: "IGRAJ",
+      [GamePhase.DISCARD]: "IZBACI KARTU",
+      [GamePhase.GAME_OVER]: "IGRA ZAVRSENA",
     };
 
-    this.phaseText?.setText(this.isMyTurn ? phaseNames[this.currentPhase] : '');
-    this.turnIndicator?.setText(this.isMyTurn ? 'TI SI NA REDU' : 'SACEKAJ...');
-    this.turnIndicator?.setColor(this.isMyTurn ? '#4CAF50' : '#FFC107');
+    this.phaseText?.setText(this.isMyTurn ? phaseNames[this.currentPhase] : "");
+    this.turnIndicator?.setText(this.isMyTurn ? "TI SI NA REDU" : "SACEKAJ...");
+    this.turnIndicator?.setColor(this.isMyTurn ? "#4CAF50" : "#FFC107");
   }
 
   updateMeldUI(): void {
@@ -621,13 +865,17 @@ export class GameScene extends Phaser.Scene {
     if (this.meldScoreText) {
       this.meldScoreText.setText(`${validation.score}`);
       this.meldScoreText.setColor(
-        validation.score === 0 ? '#ffffff' :
-          validation.meetsOpenRequirement ? '#00ff00' : '#ff0000'
+        validation.score === 0
+          ? "#ffffff"
+          : validation.meetsOpenRequirement
+          ? "#00ff00"
+          : "#ff0000"
       );
     }
     // Update button visibility
     if (this.meldButton) {
-      const show = this.isMyTurn &&
+      const show =
+        this.isMyTurn &&
         this.currentPhase === GamePhase.MELD &&
         selectedCards.length >= 3 &&
         validation.isValid &&
@@ -642,140 +890,154 @@ export class GameScene extends Phaser.Scene {
   }
 
   showMessage(text: string, duration: number = 2000): void {
-    const msg = this.add.text(this.scale.width / 2, this.scale.height / 2 + 100, text, {
-      fontSize: '24px', fontFamily: 'Arial', color: '#ffffff',
-      backgroundColor: '#000000', padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setDepth(1000);
+    const msg = this.add
+      .text(this.scale.width / 2, this.scale.height / 2 + 100, text, {
+        fontSize: "24px",
+        fontFamily: "Arial",
+        color: "#ffffff",
+        backgroundColor: "#000000",
+        padding: { x: 20, y: 10 },
+      })
+      .setOrigin(0.5)
+      .setDepth(1000);
 
     this.tweens.add({
-      targets: msg, alpha: 0, y: msg.y - 30, duration,
-      ease: 'Power2', onComplete: () => msg.destroy(),
+      targets: msg,
+      alpha: 0,
+      y: msg.y - 30,
+      duration,
+      ease: "Power2",
+      onComplete: () => msg.destroy(),
     });
   }
 
   showUndoOption(cardGO: CardGameObject, onUndo: () => void, onCancel: () => void): void {
-    // Return card to original position
-    cardGO.setPosition(
-      cardGO.getData('origX'),
-      cardGO.getData('origY')
-    );
+  // Return card to original position
+  cardGO.setPosition(
+    cardGO.getData('origX'),
+    cardGO.getData('origY')
+  );
 
-    // Destroy existing dialog if any
-    this.undoDialog?.destroy();
+  // Destroy existing dialog if any
+  this.undoDialog?.destroy();
 
-    const message = this.add.text(
-      LAYOUT.DRAW_PILE.x - 50, LAYOUT.DRAW_PILE.y + 80,
-      'Kartu uzetu sa stola moras i da iskoristis!\n\nPonisti potez i vuci kartu iz spila?',
-      {
-        fontSize: '18px',
-        color: '#000000',
-        align: 'center',
-        wordWrap: { width: 450 }
-      }
-    ).setOrigin(0);
+  const { width, height } = this.scale;
 
-    const undoBtn = this.add.rectangle(480, 540, 100, 40, 0x4CAF50)
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerover', () => undoBtn.setFillStyle(0x66BB6A))
-      .on('pointerout', () => undoBtn.setFillStyle(0x4CAF50))
-      .on('pointerdown', () => {
-        this.undoDialog?.destroy();
-        this.undoDialog = null;
-        onUndo();
-      });
+  const message = this.add.text(
+    width * 0.25, height * 0.55,
+    'Kartu uzetu sa stola moras i da iskoristis!\n\nPonisti potez i vuci kartu iz spila?',
+    {
+      fontSize: '18px',
+      color: '#000000',
+      align: 'center',
+      wordWrap: { width: width * 0.5 }
+    }
+  ).setOrigin(0);
 
-    const undoText = this.add.text(480, 540, 'DA!', {
-      fontSize: '16px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+  const undoBtn = this.add.rectangle(width * 0.38, height * 0.75, 100, 40, 0x4CAF50)
+    .setOrigin(0.5)
+    .setInteractive({ useHandCursor: true })
+    .on('pointerover', () => undoBtn.setFillStyle(0x66BB6A))
+    .on('pointerout', () => undoBtn.setFillStyle(0x4CAF50))
+    .on('pointerdown', () => {
+      this.undoDialog?.destroy();
+      this.undoDialog = null;
+      onUndo();
+    });
 
-    const cancelBtn = this.add.rectangle(800, 540, 100, 40, 0xF44336)
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerover', () => cancelBtn.setFillStyle(0xE57373))
-      .on('pointerout', () => cancelBtn.setFillStyle(0xF44336))
-      .on('pointerdown', () => {
-        this.undoDialog?.destroy();
-        this.undoDialog = null;
-        onCancel();
-      });
+  const undoText = this.add.text(width * 0.38, height * 0.75, 'DA!', {
+    fontSize: '16px',
+    color: '#ffffff'
+  }).setOrigin(0.5);
 
-    const cancelText = this.add.text(800, 540, 'NE!', {
-      fontSize: '16px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+  const cancelBtn = this.add.rectangle(width * 0.62, height * 0.75, 100, 40, 0xF44336)
+    .setOrigin(0.5)
+    .setInteractive({ useHandCursor: true })
+    .on('pointerover', () => cancelBtn.setFillStyle(0xE57373))
+    .on('pointerout', () => cancelBtn.setFillStyle(0xF44336))
+    .on('pointerdown', () => {
+      this.undoDialog?.destroy();
+      this.undoDialog = null;
+      onCancel();
+    });
 
-    this.undoDialog = this.add.container(0, 0, [
-      message,
-      undoBtn,
-      undoText,
-      cancelBtn,
-      cancelText
-    ]).setDepth(1000);
-  }
+  const cancelText = this.add.text(width * 0.62, height * 0.75, 'NE!', {
+    fontSize: '16px',
+    color: '#ffffff'
+  }).setOrigin(0.5);
+
+  this.undoDialog = this.add.container(0, 0, [
+    message,
+    undoBtn,
+    undoText,
+    cancelBtn,
+    cancelText
+  ]).setDepth(1000);
+}
 
   showFinishingCardUndoOption(cardGO: CardGameObject, onUndo: () => void, onCancel: () => void): void {
-    // Return card to original position
-    cardGO.setPosition(
-      cardGO.getData('origX'),
-      cardGO.getData('origY')
-    );
+  // Return card to original position
+  cardGO.setPosition(
+    cardGO.getData('origX'),
+    cardGO.getData('origY')
+  );
 
-    // Destroy existing dialog if any
-    this.undoDialog?.destroy();
+  // Destroy existing dialog if any
+  this.undoDialog?.destroy();
 
-    const message = this.add.text(
-      LAYOUT.DRAW_PILE.x - 50, LAYOUT.DRAW_PILE.y + 80,
-      'S obzirom da si uzeo specijalnu kartu, moras i zavrsiti igru sada!\n\nPonisti potez i vuci kartu iz spila?',
-      {
-        fontSize: '18px',
-        color: '#000000',
-        align: 'center',
-        wordWrap: { width: 450 }
-      }
-    ).setOrigin(0);
+  const { width, height } = this.scale;
 
-    const undoBtn = this.add.rectangle(480, 540, 100, 40, 0x4CAF50)
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerover', () => undoBtn.setFillStyle(0x66BB6A))
-      .on('pointerout', () => undoBtn.setFillStyle(0x4CAF50))
-      .on('pointerdown', () => {
-        this.undoDialog?.destroy();
-        this.undoDialog = null;
-        onUndo();
-      });
+  const message = this.add.text(
+    width * 0.25, height * 0.55,
+    'S obzirom da si uzeo specijalnu kartu, moras i zavrsiti igru sada!\n\nPonisti potez i vuci kartu iz spila?',
+    {
+      fontSize: '18px',
+      color: '#000000',
+      align: 'center',
+      wordWrap: { width: width * 0.5 }
+    }
+  ).setOrigin(0);
 
-    const undoText = this.add.text(480, 540, 'DA!', {
-      fontSize: '16px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+  const undoBtn = this.add.rectangle(width * 0.38, height * 0.75, 100, 40, 0x4CAF50)
+    .setOrigin(0.5)
+    .setInteractive({ useHandCursor: true })
+    .on('pointerover', () => undoBtn.setFillStyle(0x66BB6A))
+    .on('pointerout', () => undoBtn.setFillStyle(0x4CAF50))
+    .on('pointerdown', () => {
+      this.undoDialog?.destroy();
+      this.undoDialog = null;
+      onUndo();
+    });
 
-    const cancelBtn = this.add.rectangle(800, 540, 100, 40, 0xF44336)
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerover', () => cancelBtn.setFillStyle(0xE57373))
-      .on('pointerout', () => cancelBtn.setFillStyle(0xF44336))
-      .on('pointerdown', () => {
-        this.undoDialog?.destroy();
-        this.undoDialog = null;
-        onCancel();
-      });
+  const undoText = this.add.text(width * 0.38, height * 0.75, 'DA!', {
+    fontSize: '16px',
+    color: '#ffffff'
+  }).setOrigin(0.5);
 
-    const cancelText = this.add.text(800, 540, 'NE!', {
-      fontSize: '16px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+  const cancelBtn = this.add.rectangle(width * 0.62, height * 0.75, 100, 40, 0xF44336)
+    .setOrigin(0.5)
+    .setInteractive({ useHandCursor: true })
+    .on('pointerover', () => cancelBtn.setFillStyle(0xE57373))
+    .on('pointerout', () => cancelBtn.setFillStyle(0xF44336))
+    .on('pointerdown', () => {
+      this.undoDialog?.destroy();
+      this.undoDialog = null;
+      onCancel();
+    });
 
-    this.undoDialog = this.add.container(0, 0, [
-      message,
-      undoBtn,
-      undoText,
-      cancelBtn,
-      cancelText
-    ]).setDepth(1000);
-  }
+  const cancelText = this.add.text(width * 0.62, height * 0.75, 'NE!', {
+    fontSize: '16px',
+    color: '#ffffff'
+  }).setOrigin(0.5);
+
+  this.undoDialog = this.add.container(0, 0, [
+    message,
+    undoBtn,
+    undoText,
+    cancelBtn,
+    cancelText
+  ]).setDepth(1000);
+}
 
   // ==========================================================================
   // HELPERS
@@ -809,9 +1071,13 @@ export class GameScene extends Phaser.Scene {
 
         players.push({
           id: i,
-          name: i === 0 ? 'You' : `Bot ${i}`, // Bot numbering starts from 1 for AI
-          handSize: state.handSizes && state.handSizes[i] ? state.handSizes[i] : 0,
-          hasOpened: state.playersHaveOpened && state.playersHaveOpened[i] ? state.playersHaveOpened[i] : false,
+          name: i === 0 ? "You" : `Bot ${i}`, // Bot numbering starts from 1 for AI
+          handSize:
+            state.handSizes && state.handSizes[i] ? state.handSizes[i] : 0,
+          hasOpened:
+            state.playersHaveOpened && state.playersHaveOpened[i]
+              ? state.playersHaveOpened[i]
+              : false,
           isCurrentPlayer: i === state.currentPlayer,
           isMe: i === 0,
           score: cumulativeScore, // Use cumulative score, not hand penalty
@@ -825,7 +1091,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < this.numPlayers; i++) {
       fallbackPlayers.push({
         id: i,
-        name: i === 0 ? 'You' : `Bot ${i}`,
+        name: i === 0 ? "You" : `Bot ${i}`,
         handSize: 0,
         hasOpened: false,
         isCurrentPlayer: i === 0,
@@ -837,10 +1103,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBackToMenu(): void {
-    UIHelpers.createModal(this, 'Leave Game?', 'Are you sure?', [
-      { text: 'Stay', callback: () => { }, color: COLORS.SECONDARY },
+    UIHelpers.createModal(this, "Leave Game?", "Are you sure?", [
+      { text: "Stay", callback: () => {}, color: COLORS.SECONDARY },
       {
-        text: 'Leave',
+        text: "Leave",
         callback: () => {
           this.multiplayerHandler?.leaveRoom();
           this.multiplayerHandler?.disconnect();
@@ -866,17 +1132,21 @@ export class GameScene extends Phaser.Scene {
 
     // Update the round display
     if (this.roundTitleText) {
-      this.roundTitleText.setText(`Round ${this.currentRound}/${this.numRounds}`);
+      this.roundTitleText.setText(
+        `Round ${this.currentRound}/${this.numRounds}`
+      );
     }
   }
 
   public showFinalResults(results: any): void {
     const { winner, totalScores } = results;
-    const winnerName = winner === 0 ? 'You' : `Bot ${winner}`;
+    const winnerName = winner === 0 ? "You" : `Bot ${winner}`;
 
     // Convert Map to array for sorting
-    const scoresArray: [number | string, number][] = Array.from(totalScores.entries()); 
-    const sortedScores = scoresArray.sort((a, b) => b[1] - a[1]); 
+    const scoresArray: [number | string, number][] = Array.from(
+      totalScores.entries()
+    );
+    const sortedScores = scoresArray.sort((a, b) => b[1] - a[1]);
 
     let message = `🎉 GAME OVER! 🎉\n\n`;
     message += `🏆 Winner: ${winnerName}\n\n`;
@@ -884,21 +1154,22 @@ export class GameScene extends Phaser.Scene {
 
     sortedScores.forEach(([playerId, score], index) => {
       const rank = index + 1;
-      const playerName = playerId === 0 ? 'You' : `Bot ${playerId}`;
-      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+      const playerName = playerId === 0 ? "You" : `Bot ${playerId}`;
+      const medal =
+        rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
       message += `${medal} ${playerName}: ${score} points\n`;
     });
 
-    UIHelpers.createModal(this, 'Game Complete!', message, [
+    UIHelpers.createModal(this, "Game Complete!", message, [
       {
-        text: 'Back to Menu',
+        text: "Back to Menu",
         callback: () => {
           this.scene.start(SCENE_KEYS.MENU);
         },
-        color: COLORS.PRIMARY
+        color: COLORS.PRIMARY,
       },
       {
-        text: 'Play Again',
+        text: "Play Again",
         callback: () => {
           // Reset and start new game
           this.totalScores.clear();
@@ -906,9 +1177,8 @@ export class GameScene extends Phaser.Scene {
           this.singlePlayerHandler?.destroy();
           this.setupSinglePlayerMode();
         },
-        color: COLORS.SUCCESS
-      }
+        color: COLORS.SUCCESS,
+      },
     ]);
   }
-
 }

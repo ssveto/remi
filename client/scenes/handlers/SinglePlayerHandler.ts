@@ -145,6 +145,8 @@ export class SinglePlayerHandler {
     // Initialize game logic
     this.logic = new Remi();
 
+    const {width, height} = this.gameScene.scale;
+
     // Subscribe to events
     this.setupEventListeners();
 
@@ -248,6 +250,7 @@ export class SinglePlayerHandler {
    * Handle discard drop
    */
   handleDiscard(card: Card, cardGO: CardGameObject): boolean {
+    const { width, height } = this.gameScene.scale;
     if (!this.logic) return false;
 
     // Check 1: Drew from discard but didn't use the card
@@ -299,8 +302,8 @@ export class SinglePlayerHandler {
       // Animate the card to discard pile
       this.gameScene.tweens.add({
         targets: cardGO,
-        x: this.config.layout.DISCARD_PILE.x,
-        y: this.config.layout.DISCARD_PILE.y,
+        x: width * this.config.layout.DISCARD_PILE.x,
+        y: height * this.config.layout.DISCARD_PILE.y,
         duration: 150,
         ease: "Power2",
         onComplete: () => {
@@ -491,6 +494,7 @@ export class SinglePlayerHandler {
   // ===========================================================================
 
   private onGameStarted(event: any): void {
+    const {width, height} = this.gameScene.scale;
     console.log("🎲 Game started event received");
 
     // Create game board elements
@@ -500,8 +504,8 @@ export class SinglePlayerHandler {
 
     // Create discard drop zone
     this.gameScene.dragDropManager.createDiscardDropZone({
-      x: this.config.layout.DISCARD_PILE.x,
-      y: this.config.layout.DISCARD_PILE.y,
+      x: width * this.config.layout.DISCARD_PILE.x,
+      y: height * this.config.layout.DISCARD_PILE.y,
     });
 
     // Create player icons
@@ -519,13 +523,14 @@ export class SinglePlayerHandler {
   }
 
   private onCardDrawn(event: any): void {
+    const {width, height} = this.gameScene.scale;
     if (event.playerIndex !== 0) return;
 
     const card = event.card as Card;
     this.gameScene.handManager.addCard(
       card,
-      this.config.layout.DRAW_PILE.x,
-      this.config.layout.DRAW_PILE.y
+      width * this.config.layout.DRAW_PILE.x,
+      height * this.config.layout.DRAW_PILE.y
     );
     this.gameScene.playerIconManager.updateAll();
 
@@ -535,13 +540,15 @@ export class SinglePlayerHandler {
   }
 
   private onCardDrawnFromDiscard(event: any): void {
+        const {width, height} = this.gameScene.scale;
+
     if (event.playerIndex !== 0) return;
 
     const card = event.card as Card;
     this.gameScene.handManager.addCard(
       card,
-      this.config.layout.DISCARD_PILE.x,
-      this.config.layout.DISCARD_PILE.y
+      width * this.config.layout.DISCARD_PILE.x,
+      height * this.config.layout.DISCARD_PILE.y
     );
 
     // Update discard pile visual after animation
@@ -555,13 +562,15 @@ export class SinglePlayerHandler {
   }
 
   private onFinishingCardDrawn(event: any): void {
+        const {width, height} = this.gameScene.scale;
+
     if (event.playerIndex !== 0) return;
 
     const card = event.card as Card;
     this.gameScene.handManager.addCard(
       card,
-      this.config.layout.FINISHING_CARD.x,
-      this.config.layout.FINISHING_CARD.y
+      width * this.config.layout.FINISHING_CARD.x,
+      height * this.config.layout.FINISHING_CARD.y
     );
 
     // Hide finishing card sprite

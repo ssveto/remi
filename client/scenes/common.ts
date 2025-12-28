@@ -24,8 +24,11 @@ export const ASSET_KEYS = {
 /**
  * Card dimensions
  */
-export const CARD_WIDTH = 73;
-export const CARD_HEIGHT = 104;
+// export const CARD_WIDTH = 73;
+// export const CARD_HEIGHT = 104;
+
+export const CARD_WIDTH = 219;
+export const CARD_HEIGHT = 312;
 
 /**
  * Color palette

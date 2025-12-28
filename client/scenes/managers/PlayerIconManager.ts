@@ -6,9 +6,12 @@ import { DEPTHS } from '../common';
 // CONSTANTS
 // =============================================================================
 
+
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
+
 export const PLAYER_ICON_CONFIG = {
-    START_X_OFFSET: 80,    // Distance from right edge
-    START_Y: 80,
+
     SPACING: 70,
     CIRCLE_RADIUS: 25,
     INDICATOR_RADIUS: 6,
@@ -84,22 +87,43 @@ export class PlayerIconManager {
     // PUBLIC API - CREATION
     // ===========================================================================
 
+    private getDynamicScale(): number {
+        const width = this.scene.scale.width;
+        const height = this.scene.scale.height;
+
+        const scaleX = width / DESIGN_WIDTH;
+        const scaleY = height / DESIGN_HEIGHT;
+
+        let scale = Math.min(scaleX, scaleY);
+
+    scale = Math.max(0.6, Math.min(scale, 2.0));
+        
+        // Maybe a different clamping for UI?
+        // Keeping it consistent ensures UI looks "part of the game".
+        //scale = Math.max(0.6, Math.min(scale, 1.2)); 
+        return scale;
+    }
+
     /**
      * Create player icons for all players (except self)
      */
+
+
     createIcons(): void {
         // Clear any existing icons
         this.destroy();
 
         const players = this.config.getPlayersInfo();
-        const startX = this.scene.scale.width - PLAYER_ICON_CONFIG.START_X_OFFSET;
+        //const startX = this.scene.scale.width - PLAYER_ICON_CONFIG.START_X_OFFSET;
+        const startX = this.scene.scale.width;
 
         let iconIndex = 0;
 
         players.forEach((player, playerIndex) => {
             if (player.isMe) return; // Skip self
 
-            const y = PLAYER_ICON_CONFIG.START_Y + iconIndex * PLAYER_ICON_CONFIG.SPACING;
+            //const y = PLAYER_ICON_CONFIG.START_Y + iconIndex * PLAYER_ICON_CONFIG.SPACING;
+            const y = iconIndex * PLAYER_ICON_CONFIG.SPACING;
             const icon = this.createPlayerIcon(playerIndex, player, startX, y);
 
             this.playerIcons.set(playerIndex, icon);
@@ -187,6 +211,34 @@ export class PlayerIconManager {
             cardCount,
             meldIndicator,
         };
+    }
+
+    updateLayout(): void {
+        if (this.playerIcons.size === 0) return;
+
+        const width = this.scene.scale.width;
+        const height = this.scene.scale.height;
+
+        const scale = this.getDynamicScale();
+
+
+        // Example: Place icons on the right side, vertically centered-ish
+        // You can adjust these anchors to suit your design (e.g. top right corner)
+        const anchorX = width * 0.95; 
+        const anchorY = height * 0.1; 
+
+        let iconIndex = 0;
+        this.playerIcons.forEach((icon) => {
+            // Calculate Y based on index
+            const y = anchorY + iconIndex * PLAYER_ICON_CONFIG.SPACING * scale;
+            
+            icon.container.setScale(scale); 
+
+            // Animate or set position
+            icon.container.setPosition(anchorX, y);
+            
+            iconIndex++;
+        });
     }
 
     // ===========================================================================

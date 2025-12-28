@@ -9,7 +9,8 @@ import { DEPTHS, CARD_WIDTH, CARD_HEIGHT } from '../common';
 // CONSTANTS
 // =============================================================================
 
-const SCALE = 1;
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
 
 export const DROP_ZONE_CONFIG = {
     EXPANSION: 60,  // Extra size around drop zones for easier targeting
@@ -141,9 +142,33 @@ export class DragDropManager {
     /**
      * Create the discard pile drop zone
      */
+
+    private getDynamicScale(): number {
+    const width = this.scene.scale.width;
+    const height = this.scene.scale.height;
+    
+    // Calculate how much the width differs from design
+    const scaleX = width / DESIGN_WIDTH;
+    // Calculate how much the height differs from design
+    const scaleY = height / DESIGN_HEIGHT;
+
+    // Pick the smaller scale. 
+    // If screen is narrow (portrait), scale by width.
+    // If screen is short (landscape monitor), scale by height.
+    // This ensures no content goes off-screen.
+    let scale = Math.min(scaleX, scaleY);
+
+    scale = scale / 3;
+
+    // Clamp scale: Don't let cards get microscopic (< 40%) or gigantic (> 150%)
+    scale = Math.max(0.4, Math.min(scale, 1.5));
+    
+    return scale;
+  }
+
     createDiscardDropZone(config: DiscardZoneConfig): void {
-        const width = config.width ?? CARD_WIDTH * SCALE + DROP_ZONE_CONFIG.EXPANSION;
-        const height = config.height ?? CARD_HEIGHT * SCALE + DROP_ZONE_CONFIG.EXPANSION;
+        const width = config.width ?? CARD_WIDTH * this.getDynamicScale() + DROP_ZONE_CONFIG.EXPANSION;
+        const height = config.height ?? CARD_HEIGHT * this.getDynamicScale() + DROP_ZONE_CONFIG.EXPANSION;
 
         // // Create highlight rectangle (hidden by default)
         // this.discardHighlight = this.scene.add.rectangle(
@@ -181,6 +206,17 @@ export class DragDropManager {
             this.discardHighlight?.setStrokeStyle(3, 0xff6666, 0);
             this.discardHighlight?.setFillStyle(0xff6666, 0);
         });
+    }
+
+    moveDiscardDropZone(x: number, y: number): void {
+        if (this.discardDropZone) {
+            this.discardDropZone.setPosition(x, y);
+            this.discardDropZone.setScale(this.getDynamicScale());
+        }
+        if (this.discardHighlight) {
+            this.discardHighlight.setPosition(x, y);
+            this.discardHighlight.setScale(this.getDynamicScale());
+        }
     }
 
     /**

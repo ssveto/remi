@@ -3,14 +3,10 @@ import * as Phaser from "phaser";
 import { Card } from "../../lib/card";
 import { CardData } from "../../../shared/types/socket-events";
 import { DEPTHS, CARD_WIDTH, CARD_HEIGHT, ASSET_KEYS } from "../common";
-import { MeldValidator } from "@shared/index";
-import { ValidationBridge } from "@shared/validation/validation-bridge";
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-
-const SCALE = 1;
 
 const SUIT_FRAMES: Record<string, number> = {
   HEART: 26,
@@ -21,12 +17,15 @@ const SUIT_FRAMES: Record<string, number> = {
   JOKER_BLACK: 53,
 };
 
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
+
 export const MELD_CONFIG = {
-  START_X: 300,
-  START_Y: 480,
-  CARD_OVERLAP: 25,
-  MELD_SPACING: 220,
-  ROW_SPACING: 100,
+  START_X: 0.2,
+  START_Y: 0.7,
+  CARD_OVERLAP: 0.01,
+  MELD_SPACING: 0.15,
+  ROW_SPACING: 0.1,
   MAX_MELDS_PER_ROW: 5,
   CARD_SCALE: 1,
   DROP_ZONE_PADDING: 25,
@@ -35,10 +34,10 @@ export const MELD_CONFIG = {
 } as const;
 
 const OPPONENT_MELD_CONFIG = {
-  START_X: 300,
-  START_Y: 100,
-  MELD_SPACING: 220,
-  ROW_SPACING: 100,
+  START_X: 0.2,
+  START_Y: 0.15,
+  MELD_SPACING: 0.15,
+  ROW_SPACING: 0.1,
 } as const;
 
 // =============================================================================
@@ -143,6 +142,29 @@ export class MeldManager {
     }
   }
 
+  private getDynamicScale(): number {
+    const width = this.scene.scale.width;
+    const height = this.scene.scale.height;
+    
+    // Calculate how much the width differs from design
+    const scaleX = width / DESIGN_WIDTH;
+    // Calculate how much the height differs from design
+    const scaleY = height / DESIGN_HEIGHT;
+
+    // Pick the smaller scale. 
+    // If screen is narrow (portrait), scale by width.
+    // If screen is short (landscape monitor), scale by height.
+    // This ensures no content goes off-screen.
+    let scale = Math.min(scaleX, scaleY);
+
+    scale = scale / 3;
+
+    // Clamp scale: Don't let cards get microscopic (< 40%) or gigantic (> 150%)
+    scale = Math.max(0.4, Math.min(scale, 1.5));
+    
+    return scale;
+  }
+
   // ===========================================================================
   // PUBLIC API - MELD CREATION
   // ===========================================================================
@@ -157,6 +179,7 @@ export class MeldManager {
     cards: Card[],
     meldIndex: number
   ): void {
+    const {width, height} = this.scene.scale;
     const isMe = this.isMyMeld(playerIndex);
     const position = this.calculateMeldPosition(meldIndex, playerIndex);
 
@@ -172,12 +195,12 @@ export class MeldManager {
 
     // Create card visuals FOR EVERYONE (not just me)
     cards.forEach((card, cardIndex) => {
-      const x = position.x + cardIndex * MELD_CONFIG.CARD_OVERLAP;
+      const x = position.x + cardIndex * width * MELD_CONFIG.CARD_OVERLAP;
       const y = position.y;
 
       const cardGO = this.scene.add
         .image(x, y, ASSET_KEYS.CARDS, this.getCardFrame(card))
-        .setScale(SCALE * MELD_CONFIG.CARD_SCALE)
+        .setScale(this.getDynamicScale() * MELD_CONFIG.CARD_SCALE)
         .setDepth(DEPTHS.CARDS + cardIndex)
         .setData("cardId", card.id) // <--- CRITICAL FIX: This links the visual to the logic
         .setInteractive({ draggable: false }); // Good practice to ensure meld cards aren't draggable
@@ -225,24 +248,26 @@ export class MeldManager {
     dropZone: Phaser.GameObjects.Zone;
     highlight: Phaser.GameObjects.Rectangle;
   } {
-    const width =
-      cardCount * MELD_CONFIG.CARD_OVERLAP +
-      CARD_WIDTH * SCALE +
+
+    const {width, height} = this.scene.scale;
+    const owidth =
+      cardCount * width * MELD_CONFIG.CARD_OVERLAP +
+      CARD_WIDTH * this.getDynamicScale() +
       MELD_CONFIG.DROP_ZONE_PADDING * 2;
-    const height = CARD_HEIGHT * SCALE + MELD_CONFIG.DROP_ZONE_PADDING * 2;
+    const oheight = CARD_HEIGHT * this.getDynamicScale() + MELD_CONFIG.DROP_ZONE_PADDING * 2;
 
     const centerX =
-      position.x + ((cardCount - 1) * MELD_CONFIG.CARD_OVERLAP) / 2;
+      position.x + ((cardCount - 1) * width * MELD_CONFIG.CARD_OVERLAP) / 2;
 
     const highlight = this.scene.add
-      .rectangle(centerX, position.y, width, height)
+      .rectangle(centerX, position.y, owidth, oheight)
       .setStrokeStyle(2, 0x00ff00, 0)
       .setFillStyle(0x00ff00, 0)
       .setDepth(DEPTHS.CARDS - 1);
 
     const dropZone = this.scene.add
-      .zone(centerX, position.y, width, height)
-      .setRectangleDropZone(width, height)
+      .zone(centerX, position.y, owidth, oheight)
+      .setRectangleDropZone(owidth, oheight)
       .setData({
         zoneType: "MELD_TABLE",
         meldIndex,
@@ -265,6 +290,34 @@ export class MeldManager {
     return { dropZone, highlight };
   }
 
+  updateLayout(): void {
+        const { width, height } = this.scene.scale;
+        const baseScale = this.getDynamicScale();
+
+        // Iterate through all players' melds
+        this.allPlayerMelds.forEach((playerMelds, playerIndex) => {
+            playerMelds.forEach((meld) => {
+                // 1. Recalculate the base position of this meld
+                const newPos = this.calculateMeldPosition(meld.meldIndex, playerIndex);
+                meld.position = newPos;
+
+                // 2. Move the cards
+                meld.cards.forEach((cardGO, cardIndex) => {
+                    const cardX = newPos.x + cardIndex * width * MELD_CONFIG.CARD_OVERLAP;
+                    const cardY = newPos.y;
+
+                    cardGO.setScale(baseScale);
+                    
+                    // We use setPosition directly to avoid animation lag during resize
+                    cardGO.setPosition(cardX, cardY);
+                });
+
+                // 3. Recreate the drop zone (as its size and position depend on screen width)
+                this.recreateMeldDropZone(meld);
+            });
+        });
+    }
+
   // ===========================================================================
   // PUBLIC API - ADD TO MELD
   // ===========================================================================
@@ -280,6 +333,7 @@ export class MeldManager {
   ): void {
     // 1. Stop any active tweens (like the drag cursor follow) to prevent fighting
     this.scene.tweens.killTweensOf(cardGO);
+    const {width, height} = this.scene.scale;
 
     // 2. Set the cardId on the new sprite so we can match it
     cardGO.setData("cardId", card.id);
@@ -292,13 +346,13 @@ export class MeldManager {
 
     // 5. Ensure consistent properties (Scale, Origin, Alpha)
     // This fixes the "displayed correctly" issue if hand cards were smaller/larger
-    cardGO.setScale(SCALE * MELD_CONFIG.CARD_SCALE);
+    cardGO.setScale(this.getDynamicScale() * MELD_CONFIG.CARD_SCALE);
     cardGO.setOrigin(0.5, 0.5); // Ensure center origin for consistent alignment
     cardGO.setAlpha(1); // Ensure it's fully visible
 
     // 6. Reposition ALL cards based on sorted order
     sortedMeldData.forEach((cardData, index) => {
-      const finalX = meld.position.x + index * MELD_CONFIG.CARD_OVERLAP;
+      const finalX = meld.position.x + index * width * MELD_CONFIG.CARD_OVERLAP;
       const finalY = meld.position.y;
 
       // Find the sprite for this card
@@ -342,6 +396,7 @@ export class MeldManager {
     const jokerGO = meld.cards.find(
       (go) => go.getData("cardId") === replacedJoker.id
     );
+    const {width, height} = this.scene.scale;
 
     const jokerPosition = jokerGO
       ? { x: jokerGO.x, y: jokerGO.y }
@@ -349,7 +404,7 @@ export class MeldManager {
 
     // Set cardId on new sprite
     cardGO.setData("cardId", card.id);
-    cardGO.setScale(SCALE * MELD_CONFIG.CARD_SCALE);
+    cardGO.setScale(this.getDynamicScale() * MELD_CONFIG.CARD_SCALE);
     cardGO.setOrigin(0.5, 0.5);
 
     // Remove joker sprite from array
@@ -369,7 +424,7 @@ export class MeldManager {
 
     // Reposition ALL cards based on sorted order
     sortedMeldData.forEach((cardData, index) => {
-      const finalX = meld.position.x + index * MELD_CONFIG.CARD_OVERLAP;
+      const finalX = meld.position.x + index * width * MELD_CONFIG.CARD_OVERLAP;
       const finalY = meld.position.y;
 
       const sprite = meld.cards.find(
@@ -608,6 +663,7 @@ export class MeldManager {
     playerIndex: number
   ): { x: number; y: number } {
     const isMe = this.isMyMeld(playerIndex);
+    const { width, height } = this.scene.scale;
 
     if (isMe) {
       // My melds - bottom area
@@ -615,8 +671,8 @@ export class MeldManager {
       const col = meldIndex % MELD_CONFIG.MAX_MELDS_PER_ROW;
 
       return {
-        x: MELD_CONFIG.START_X + col * MELD_CONFIG.MELD_SPACING,
-        y: MELD_CONFIG.START_Y /*+ row * MELD_CONFIG.ROW_SPACING*/,
+        x: width * MELD_CONFIG.START_X + col * width * MELD_CONFIG.MELD_SPACING,
+        y: height * MELD_CONFIG.START_Y /*+ row * MELD_CONFIG.ROW_SPACING*/,
       };
     } else {
       // Opponent melds - top area
@@ -625,13 +681,13 @@ export class MeldManager {
 
       // Offset vertically for each opponent
       const opponentIndex = this.config.getOpponentIndex(playerIndex);
-      const playerYOffset = opponentIndex * OPPONENT_MELD_CONFIG.ROW_SPACING;
+      const playerYOffset = opponentIndex * height * OPPONENT_MELD_CONFIG.ROW_SPACING;
 
       return {
         x:
-          OPPONENT_MELD_CONFIG.START_X +
-          col * OPPONENT_MELD_CONFIG.MELD_SPACING,
-        y: OPPONENT_MELD_CONFIG.START_Y,
+          width * OPPONENT_MELD_CONFIG.START_X +
+          col * width * OPPONENT_MELD_CONFIG.MELD_SPACING,
+        y: height * OPPONENT_MELD_CONFIG.START_Y,
         // playerYOffset +
         // row * OPPONENT_MELD_CONFIG.ROW_SPACING,
       };
@@ -663,6 +719,7 @@ export class MeldManager {
   }
 
   private recreateMeldDropZone(meld: PlayerMeld): void {
+    const { width, height } = this.scene.scale;
     if (meld.dropZone) {
       meld.dropZone.destroy();
       meld.dropZone = null;
@@ -680,28 +737,28 @@ export class MeldManager {
     // 1. Calculate Center based on Logic (not animation)
     // The first card is at 'meld.position.x'.
     // The cards extend to the right by (count-1)*overlap.
-    const offset = ((cardCount - 1) * MELD_CONFIG.CARD_OVERLAP) / 2;
+    const offset = ((cardCount - 1) * width * MELD_CONFIG.CARD_OVERLAP) / 2;
     const centerX = meld.position.x + offset;
     const centerY = meld.position.y;
 
     // 2. Calculate Correct Width
     // Actual visual span = (Count-1) * Overlap + CardWidth
     const contentWidth =
-      (cardCount - 1) * MELD_CONFIG.CARD_OVERLAP + CARD_WIDTH * SCALE;
-    const width = contentWidth + MELD_CONFIG.DROP_ZONE_PADDING * 2;
-    const height = CARD_WIDTH * SCALE + MELD_CONFIG.DROP_ZONE_PADDING * 2;
+      (cardCount - 1) * width * MELD_CONFIG.CARD_OVERLAP + CARD_WIDTH * this.getDynamicScale();
+    const owidth = contentWidth + MELD_CONFIG.DROP_ZONE_PADDING * 2;
+    const oheight = CARD_WIDTH * this.getDynamicScale() + MELD_CONFIG.DROP_ZONE_PADDING * 2;
 
     // 3. Create Highlight
     const highlight = this.scene.add
-      .rectangle(centerX, centerY, width, height)
+      .rectangle(centerX, centerY, owidth, oheight)
       .setStrokeStyle(2, 0x00ff00, 0)
       .setFillStyle(0x00ff00, 0)
       .setDepth(DEPTHS.CARDS - 1);
 
     // 4. Create Drop Zone
     const dropZone = this.scene.add
-      .zone(centerX, centerY, width, height)
-      .setRectangleDropZone(width, height)
+      .zone(centerX, centerY, owidth, oheight)
+      .setRectangleDropZone(owidth, oheight)
       .setData({
         zoneType: "MELD_TABLE",
         meldIndex: meld.meldIndex,

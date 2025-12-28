@@ -9,7 +9,8 @@ import { DEPTHS, CARD_WIDTH, CARD_HEIGHT, ASSET_KEYS } from "../common";
 // CONSTANTS
 // =============================================================================
 
-const SCALE = 1;
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
 
 const SUIT_FRAMES: Record<string, number> = {
   HEART: 26,
@@ -21,11 +22,12 @@ const SUIT_FRAMES: Record<string, number> = {
 };
 
 export const HAND_LAYOUT = {
-  MAX_HAND_WIDTH: 570 * 2,
-  CARD_SPACING: 38 * 2,
-  MIN_SCALE: 0.4,
+  MAX_HAND_WIDTH_RATIO: 0.9, // Use 90% of screen width
+  CARD_SPACING: 228, // Base spacing at 1.0 scale (will be scaled)
+  MIN_SCALE: 0.1,
+  MAX_SCALE: 0.4,
   MAX_CARDS_IN_HAND: 15,
-  PLAYER_HAND: { x: 60, y: 580 },
+  PLAYER_HAND_Y_RATIO: 0.85, // 85% down from top
   ANIMATION_DURATION: 300,
 } as const;
 
@@ -129,20 +131,25 @@ export class HandManager {
    * Add a card to the hand
    */
   addCard(card: Card, fromX?: number, fromY?: number): CardGameObject {
+    const { width } = this.scene.scale;
     this.handCards.push(card);
 
-    const startX = fromX ?? this.scene.scale.width / 2;
-    const startY = fromY ?? HAND_LAYOUT.PLAYER_HAND.y;
+    const startX = fromX ?? width / 2;
+    const startY = fromY ?? this.getHandY();
 
     const cardGO = this.createCardSprite(card, startX, startY);
     this.handSprites.push(cardGO);
 
     // Animate to hand position
-    const targetX = this.calculateHandPosition(this.handSprites.length - 1);
+    const layout = this.calculateHandLayout();
+    const targetX = layout.startX + (this.handSprites.length - 1) * layout.spacing;
+    
     this.scene.tweens.add({
       targets: cardGO,
       x: targetX,
-      y: HAND_LAYOUT.PLAYER_HAND.y,
+      y: this.getHandY(),
+      scaleX: layout.scaleFactor,
+      scaleY: layout.scaleFactor,
       duration: HAND_LAYOUT.ANIMATION_DURATION,
       ease: "Back.easeOut",
       onStart: () => cardGO.setDepth(30),
@@ -263,21 +270,23 @@ export class HandManager {
   }
 
   findCardSprite(card: Card): CardGameObject | null {
-  return this.handSprites.find(
-    go => (go.cardData as Card)?.id === card.id
-  ) || null;
-}
+    return this.handSprites.find(
+      go => (go.cardData as Card)?.id === card.id
+    ) || null;
+  }
 
   /**
    * Select a card
    */
   selectCard(cardGO: CardGameObject): void {
+    const handY = this.getHandY();
+
     this.selectedCards.add(cardGO);
     cardGO.setTint(0xffff00);
 
     this.scene.tweens.add({
       targets: cardGO,
-      y: HAND_LAYOUT.PLAYER_HAND.y - 10,
+      y: handY - 10,
       duration: 100,
       ease: "Back.easeOut",
     });
@@ -289,12 +298,14 @@ export class HandManager {
    * Deselect a card
    */
   deselectCard(cardGO: CardGameObject): void {
+    const handY = this.getHandY();
+
     this.selectedCards.delete(cardGO);
     cardGO.clearTint();
 
     this.scene.tweens.add({
       targets: cardGO,
-      y: HAND_LAYOUT.PLAYER_HAND.y,
+      y: handY,
       duration: 100,
       ease: "Back.easeOut",
     });
@@ -306,9 +317,11 @@ export class HandManager {
    * Clear all selections
    */
   clearSelection(): void {
+    const handY = this.getHandY();
+
     this.selectedCards.forEach((cardGO) => {
       cardGO.clearTint();
-      cardGO.setY(HAND_LAYOUT.PLAYER_HAND.y);
+      cardGO.setY(handY);
       if (cardGO.input) {
         this.scene.input.setDraggable(cardGO, false);
       }
@@ -394,16 +407,19 @@ export class HandManager {
     const layout = this.calculateHandLayout();
     if (layout.numCards === 0) return;
 
+    const handY = this.getHandY();
+
     this.handSprites.forEach((sprite, index) => {
       const finalX = layout.startX + index * layout.spacing;
       const isSelected = this.selectedCards.has(sprite);
 
+      // Use tweens for smooth animation
       this.scene.tweens.add({
         targets: sprite,
         x: finalX,
-        y: isSelected
-          ? HAND_LAYOUT.PLAYER_HAND.y - 10
-          : HAND_LAYOUT.PLAYER_HAND.y,
+        y: isSelected ? handY - 10 : handY,
+        scaleX: layout.scaleFactor,
+        scaleY: layout.scaleFactor,
         duration: HAND_LAYOUT.ANIMATION_DURATION,
         ease: "Sine.easeOut",
       });
@@ -424,17 +440,17 @@ export class HandManager {
     const layout = this.calculateHandLayout();
     if (layout.numCards === 0) return;
 
-    // Create new zones
+    const handY = this.getHandY();
+
+    // Create new zones with the layout's scale factor
     this.handSprites.forEach((sprite, index) => {
       const finalX = layout.startX + index * layout.spacing;
+      const zoneWidth = CARD_WIDTH * layout.scaleFactor;
+      const zoneHeight = CARD_HEIGHT * layout.scaleFactor;
+      
       const zone = this.scene.add
-        .zone(
-          finalX,
-          HAND_LAYOUT.PLAYER_HAND.y,
-          CARD_WIDTH,
-          CARD_HEIGHT * SCALE
-        )
-        .setRectangleDropZone(CARD_WIDTH * SCALE, CARD_HEIGHT * SCALE)
+        .zone(finalX, handY, zoneWidth, zoneHeight)
+        .setRectangleDropZone(zoneWidth, zoneHeight)
         .setOrigin(0)
         .setData({
           zoneType: "CARDS_IN_HAND",
@@ -453,6 +469,15 @@ export class HandManager {
     return this.handDropZones;
   }
 
+  /**
+   * Handle screen resize - reposition and rescale all cards
+   */
+  public handleResize(): void {
+    // Recalculate and update all positions
+    this.updateHandDisplay();
+    this.updateHandDropZones();
+  }
+
   // ===========================================================================
   // PUBLIC API - UTILITIES
   // ===========================================================================
@@ -461,6 +486,7 @@ export class HandManager {
    * Get the frame number for a card
    */
   getCardFrame(card: Card | CardData): number {
+
     if (
       card.value === 14 ||
       card.suit === "JOKER_RED" ||
@@ -484,7 +510,7 @@ export class HandManager {
     const sprite = this.scene.add
       .image(x, y, ASSET_KEYS.CARDS, frame)
       .setOrigin(0)
-      .setScale(SCALE)
+      .setScale(this.getDynamicScale())
       .setInteractive()
       .setData({
         cardId: card.id,
@@ -495,7 +521,6 @@ export class HandManager {
       this.scene.input.setDraggable(sprite);
     }
 
-    sprite.setScale(SCALE);
     sprite.setDepth(DEPTHS.CARDS);
     sprite.cardData = card;
 
@@ -573,51 +598,86 @@ export class HandManager {
   // PRIVATE - LAYOUT CALCULATION
   // ===========================================================================
 
+  private getDynamicScale(): number {
+    const { width, height } = this.scene.scale;
+    
+    // Base scale on the smaller dimension to ensure cards fit
+    const scaleX = width / DESIGN_WIDTH;
+    const scaleY = height / DESIGN_HEIGHT;
+    
+    // Use the minimum to ensure everything fits
+    let scale = Math.min(scaleX, scaleY);
+    
+    scale = scale / 3;
+    // Clamp between min and max
+    scale = Math.max(HAND_LAYOUT.MIN_SCALE, Math.min(scale, HAND_LAYOUT.MAX_SCALE));
+    
+    return scale;
+  }
+
+  private getHandY(): number {
+    return this.scene.scale.height * HAND_LAYOUT.PLAYER_HAND_Y_RATIO;
+  }
+
   private calculateHandPosition(index: number): number {
-    const totalCards = Math.max(this.handSprites.length, index + 1);
-    const spacing = Math.min(
-      HAND_LAYOUT.CARD_SPACING,
-      HAND_LAYOUT.MAX_HAND_WIDTH / totalCards
-    );
-    const totalWidth = (totalCards - 1) * spacing;
-    const startX = (this.scene.scale.width - totalWidth) / 2;
-    return startX + index * spacing;
+    const layout = this.calculateHandLayout();
+    return layout.startX + (index * layout.spacing);
   }
 
   private calculateHandLayout(): HandLayout {
+    const width = this.scene.scale.width;
     const numCards = this.handSprites.length;
 
     if (numCards === 0) {
       return {
-        startX: HAND_LAYOUT.PLAYER_HAND.x,
+        startX: width / 2,
         spacing: 0,
-        scaleFactor: 1,
+        scaleFactor: this.getDynamicScale(),
         numCards: 0,
       };
     }
 
-    // Calculate how wide the hand would be without scaling
-    const unscaledTotalWidth =
-      CARD_WIDTH + (numCards - 1) * HAND_LAYOUT.CARD_SPACING;
-
-    // Scale down if too wide, but never smaller than MIN_SCALE
-    let scaleFactor = Math.min(
-      1,
-      HAND_LAYOUT.MAX_HAND_WIDTH / unscaledTotalWidth
-    );
+    // Start with base scale
+    let scaleFactor = this.getDynamicScale();
+    
+    // Calculate card width and spacing at this scale
+    const scaledCardWidth = CARD_WIDTH * scaleFactor;
+    const scaledSpacing = HAND_LAYOUT.CARD_SPACING * scaleFactor;
+    
+    // Calculate total width needed
+    let totalWidth = scaledCardWidth + (numCards - 1) * scaledSpacing;
+    
+    // Maximum allowed width
+    const maxWidth = width * HAND_LAYOUT.MAX_HAND_WIDTH_RATIO;
+    
+    // If too wide, scale down proportionally
+    if (totalWidth > maxWidth) {
+      const ratio = maxWidth / totalWidth;
+      scaleFactor *= ratio;
+      
+      // Recalculate with new scale
+      const newCardWidth = CARD_WIDTH * scaleFactor;
+      const newSpacing = HAND_LAYOUT.CARD_SPACING * scaleFactor;
+      totalWidth = newCardWidth + (numCards - 1) * newSpacing;
+    }
+    
+    // Ensure scale doesn't go below minimum
     scaleFactor = Math.max(scaleFactor, HAND_LAYOUT.MIN_SCALE);
+    
+    // Final calculations with clamped scale
+    const finalCardWidth = CARD_WIDTH * scaleFactor;
+    const finalSpacing = HAND_LAYOUT.CARD_SPACING * scaleFactor;
+    const finalWidth = finalCardWidth + (numCards - 1) * finalSpacing;
+    
+    // Center the hand
+    const startX = (width - finalWidth) / 2;
 
-    // Calculate actual width after scaling
-    const scaledTotalWidth =
-      CARD_WIDTH * scaleFactor +
-      (numCards - 1) * (HAND_LAYOUT.CARD_SPACING * scaleFactor);
-
-    // Center the hand by calculating empty space on sides
-    const emptySpace = HAND_LAYOUT.MAX_HAND_WIDTH - scaledTotalWidth;
-    const startX = HAND_LAYOUT.PLAYER_HAND.x + emptySpace / 2;
-    const spacing = HAND_LAYOUT.CARD_SPACING * scaleFactor;
-
-    return { startX, spacing, scaleFactor, numCards };
+    return { 
+      startX, 
+      spacing: finalSpacing, 
+      scaleFactor, 
+      numCards 
+    };
   }
 
   // ===========================================================================
@@ -629,9 +689,13 @@ export class HandManager {
     this.handSprites.forEach((sprite) => this.destroyCardSafely(sprite));
     this.handSprites = [];
 
+    const handY = this.getHandY();
+    const layout = this.calculateHandLayout();
+
     this.handCards.forEach((card, index) => {
-      const x = this.calculateHandPosition(index);
-      const cardGO = this.createCardSprite(card, x, HAND_LAYOUT.PLAYER_HAND.y);
+      const x = layout.startX + index * layout.spacing;
+      const cardGO = this.createCardSprite(card, x, handY);
+      cardGO.setScale(layout.scaleFactor);
       this.makeCardInteractive(cardGO);
       this.handSprites.push(cardGO);
     });
