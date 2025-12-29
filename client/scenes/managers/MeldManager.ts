@@ -143,27 +143,21 @@ export class MeldManager {
   }
 
   private getDynamicScale(): number {
-    const width = this.scene.scale.width;
-    const height = this.scene.scale.height;
-    
-    // Calculate how much the width differs from design
-    const scaleX = width / DESIGN_WIDTH;
-    // Calculate how much the height differs from design
-    const scaleY = height / DESIGN_HEIGHT;
-
-    // Pick the smaller scale. 
-    // If screen is narrow (portrait), scale by width.
-    // If screen is short (landscape monitor), scale by height.
-    // This ensures no content goes off-screen.
-    let scale = Math.min(scaleX, scaleY);
-
-    scale = scale / 3;
-
-    // Clamp scale: Don't let cards get microscopic (< 40%) or gigantic (> 150%)
-    scale = Math.max(0.4, Math.min(scale, 1.5));
-    
-    return scale;
-  }
+      const { width, height } = this.scene.scale;
+      
+      // Base scale on the smaller dimension to ensure cards fit
+      const scaleX = width / DESIGN_WIDTH;
+      const scaleY = height / DESIGN_HEIGHT;
+      
+      // Use the minimum to ensure everything fits
+      let scale = Math.min(scaleX, scaleY);
+      
+      scale = scale / 3;
+      // Clamp between min and max
+      scale = Math.max(0.2, Math.min(scale, 0.4));
+      
+      return scale;
+    }
 
   // ===========================================================================
   // PUBLIC API - MELD CREATION

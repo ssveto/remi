@@ -24,7 +24,7 @@ const SUIT_FRAMES: Record<string, number> = {
 export const HAND_LAYOUT = {
   MAX_HAND_WIDTH_RATIO: 0.9, // Use 90% of screen width
   CARD_SPACING: 228, // Base spacing at 1.0 scale (will be scaled)
-  MIN_SCALE: 0.1,
+  MIN_SCALE: 0.15,
   MAX_SCALE: 0.4,
   MAX_CARDS_IN_HAND: 15,
   PLAYER_HAND_Y_RATIO: 0.85, // 85% down from top
@@ -617,11 +617,6 @@ export class HandManager {
 
   private getHandY(): number {
     return this.scene.scale.height * HAND_LAYOUT.PLAYER_HAND_Y_RATIO;
-  }
-
-  private calculateHandPosition(index: number): number {
-    const layout = this.calculateHandLayout();
-    return layout.startX + (index * layout.spacing);
   }
 
   private calculateHandLayout(): HandLayout {

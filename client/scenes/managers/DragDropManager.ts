@@ -167,8 +167,8 @@ export class DragDropManager {
   }
 
     createDiscardDropZone(config: DiscardZoneConfig): void {
-        const width = config.width ?? CARD_WIDTH * this.getDynamicScale() + DROP_ZONE_CONFIG.EXPANSION;
-        const height = config.height ?? CARD_HEIGHT * this.getDynamicScale() + DROP_ZONE_CONFIG.EXPANSION;
+        const width = config.width ?? CARD_WIDTH + DROP_ZONE_CONFIG.EXPANSION;
+        const height = config.height ?? CARD_HEIGHT + DROP_ZONE_CONFIG.EXPANSION;
 
         // // Create highlight rectangle (hidden by default)
         // this.discardHighlight = this.scene.add.rectangle(

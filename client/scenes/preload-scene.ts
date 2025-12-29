@@ -7,10 +7,10 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   public preload(): void {
-    this.load.spritesheet(ASSET_KEYS.CARDS, "assets/images/spritesheet-revorked.png", {
+    this.load.spritesheet(ASSET_KEYS.CARDS, "assets/images/spritesheet.png", {
       frameWidth: 219,
       frameHeight: 312,
-      spacing: 8,
+      spacing: 4,
       margin: 0,
       //endFrame: 55, // 55 cards total (0-54)
     });

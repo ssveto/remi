@@ -1,10 +1,3 @@
-// client/scenes/game-scene.ts (FINAL - ULTRA LEAN)
-//
-// Complete refactoring with:
-// - 5 Managers: Hand, Meld, PlayerIcon, DragDrop, AI
-// - 2 Handlers: SinglePlayer, Multiplayer
-//
-// GameScene is now ~350 lines - just initialization, UI, and coordination
 
 import * as Phaser from "phaser";
 import { Card } from "../lib/card";
@@ -306,32 +299,27 @@ export class GameScene extends Phaser.Scene {
   // DRAG/DROP CALLBACKS
   // ==========================================================================
 
-  private getDynamicScale(): number {
-    const width = this.scale.width;
-    const height = this.scale.height;
-
-    // Calculate how much the width differs from design
-    const scaleX = width / DESIGN_WIDTH;
-    // Calculate how much the height differs from design
-    const scaleY = height / DESIGN_HEIGHT;
-
-    // Pick the smaller scale.
-    // If screen is narrow (portrait), scale by width.
-    // If screen is short (landscape monitor), scale by height.
-    // This ensures no content goes off-screen.
-    let scale = Math.min(scaleX, scaleY);
-
-    scale = scale / 3;
-
-    // Clamp scale: Don't let cards get microscopic (< 40%) or gigantic (> 150%)
-    scale = Math.max(0.4, Math.min(scale, 1.5));
-
-    return scale;
-  }
+    private getDynamicScale(): number {
+      const { width, height } = this.scale;
+      
+      // Base scale on the smaller dimension to ensure cards fit
+      const scaleX = width / DESIGN_WIDTH;
+      const scaleY = height / DESIGN_HEIGHT;
+      
+      // Use the minimum to ensure everything fits
+      let scale = Math.min(scaleX, scaleY);
+      
+      scale = scale / 3;
+      // Clamp between min and max
+      scale = Math.max(0.15, Math.min(scale, 0.4));
+      
+      return scale;
+    }
 
   private updateLayout(gameSize: Phaser.Structs.Size | Phaser.Scale.ScaleManager) {
     const width = gameSize.width;
     const height = gameSize.height;
+    const scale = this.getDynamicScale();
 
     // A. Update Draw Pile & Draw Zone
     if (this.drawPileSprites) {
@@ -340,7 +328,7 @@ export class GameScene extends Phaser.Scene {
           width * LAYOUT.DRAW_PILE.x + i * 2,
           height * LAYOUT.DRAW_PILE.y
         );
-        sprite.setScale(this.getDynamicScale() * 0.9);
+        sprite.setScale(this.getDynamicScale());
       });
     }
     if (this.drawZone) {
@@ -357,7 +345,7 @@ export class GameScene extends Phaser.Scene {
         width * LAYOUT.DISCARD_PILE.x,
         height * LAYOUT.DISCARD_PILE.y
       );
-      this.discardPileSprite.setScale(this.getDynamicScale() * 0.9);
+      this.discardPileSprite.setScale(this.getDynamicScale());
     }
 
     if (this.discardPileRectangle) {
@@ -367,8 +355,8 @@ export class GameScene extends Phaser.Scene {
       );
       // Update the size (width, height) separately
       this.discardPileRectangle.setSize(
-        CARD_WIDTH * this.getDynamicScale() * 0.9,
-        CARD_HEIGHT * this.getDynamicScale() * 0.9
+        CARD_WIDTH * this.getDynamicScale(),
+        CARD_HEIGHT * this.getDynamicScale()
       );
     }
 
@@ -388,11 +376,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.phaseText) {
-      this.phaseText.setPosition(width / 2, height / 2 - 140);
+      this.phaseText.setPosition(width / 2, height * 0.37).setFontSize(`${52 * scale}px`);
     }
 
     if (this.turnIndicator) {
-      this.turnIndicator.setPosition(width / 2, height / 2 - 115);
+      this.turnIndicator.setPosition(width / 2, height * 0.4).setFontSize(`${52 * scale}px`);
     }
 
     // 4. Update Player Hand (HandManager handles internal logic)
@@ -751,8 +739,8 @@ export class GameScene extends Phaser.Scene {
       .zone(
         width * LAYOUT.DRAW_PILE.x,
         height * LAYOUT.DRAW_PILE.y,
-        CARD_WIDTH * this.getDynamicScale() + 20,
-        CARD_HEIGHT * this.getDynamicScale() + 20
+        CARD_WIDTH,
+        CARD_HEIGHT,
       )
       .setInteractive({ useHandCursor: true })
       .setOrigin(0.5, 0.5);
@@ -765,8 +753,8 @@ export class GameScene extends Phaser.Scene {
       .rectangle(
         width * LAYOUT.DISCARD_PILE.x,
         height * LAYOUT.DISCARD_PILE.y,
-        CARD_WIDTH * this.getDynamicScale(),
-        CARD_HEIGHT * this.getDynamicScale(),
+        CARD_WIDTH,
+        CARD_HEIGHT,
         0x333333,
         0.3
       )
